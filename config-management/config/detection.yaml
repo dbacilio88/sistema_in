@@ -1,0 +1,11 @@
+max_disappeared: 30
+max_distance: 100
+max_vehicle_area: 500000
+min_track_length: 10
+min_vehicle_area: 1000
+ocr_confidence_threshold: 0.8
+plate_formats: null
+speed_smoothing_window: 5
+speed_threshold_violation: 10
+speed_threshold_warning: 5
+trajectory_smoothing: true

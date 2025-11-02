@@ -1,0 +1,117 @@
+{{- if .Values.backend.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "traffic-system.fullname" . }}-backend
+  labels:
+    {{- include "traffic-system.backend.labels" . | nindent 4 }}
+spec:
+  {{- if not .Values.backend.autoscaling.enabled }}
+  replicas: {{ .Values.backend.replicaCount }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "traffic-system.backend.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "traffic-system.backend.selectorLabels" . | nindent 8 }}
+    spec:
+      {{- with .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "traffic-system.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.security.securityContext | nindent 8 }}
+      containers:
+        - name: backend
+          image: "{{ .Values.global.imageRegistry | default "" }}{{ .Values.images.backend.repository }}:{{ .Values.images.backend.tag }}"
+          imagePullPolicy: {{ .Values.images.backend.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.backend.service.targetPort }}
+              protocol: TCP
+          env:
+            {{- include "traffic-system.commonEnv" . | nindent 12 }}
+            {{- range $key, $value := .Values.backend.env }}
+            {{- if not (has $key (list "DATABASE_URL" "REDIS_URL" "CELERY_BROKER_URL")) }}
+            - name: {{ $key }}
+              value: {{ $value | quote }}
+            {{- end }}
+            {{- end }}
+          {{- with .Values.backend.livenessProbe }}
+          livenessProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.backend.readinessProbe }}
+          readinessProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          resources:
+            {{- toYaml .Values.backend.resources | nindent 12 }}
+          volumeMounts:
+            - name: static-files
+              mountPath: /app/static
+            {{- if .Values.persistence.sharedStorage.enabled }}
+            - name: shared-storage
+              mountPath: /app/media
+            {{- end }}
+      volumes:
+        - name: static-files
+          emptyDir: {}
+        {{- if .Values.persistence.sharedStorage.enabled }}
+        - name: shared-storage
+          persistentVolumeClaim:
+            claimName: {{ include "traffic-system.fullname" . }}-shared-storage
+        {{- end }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "traffic-system.fullname" . }}-backend
+  labels:
+    {{- include "traffic-system.backend.labels" . | nindent 4 }}
+spec:
+  type: {{ .Values.backend.service.type }}
+  ports:
+    - port: {{ .Values.backend.service.port }}
+      targetPort: {{ .Values.backend.service.targetPort }}
+      protocol: TCP
+      name: http
+  selector:
+    {{- include "traffic-system.backend.selectorLabels" . | nindent 4 }}
+{{- if .Values.backend.autoscaling.enabled }}
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ include "traffic-system.fullname" . }}-backend
+  labels:
+    {{- include "traffic-system.backend.labels" . | nindent 4 }}
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ include "traffic-system.fullname" . }}-backend
+  minReplicas: {{ .Values.backend.autoscaling.minReplicas }}
+  maxReplicas: {{ .Values.backend.autoscaling.maxReplicas }}
+  metrics:
+    {{- if .Values.backend.autoscaling.targetCPUUtilizationPercentage }}
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: {{ .Values.backend.autoscaling.targetCPUUtilizationPercentage }}
+    {{- end }}
+    {{- if .Values.backend.autoscaling.targetMemoryUtilizationPercentage }}
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: {{ .Values.backend.autoscaling.targetMemoryUtilizationPercentage }}
+    {{- end }}
+{{- end }}
+{{- end }}

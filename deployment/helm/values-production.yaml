@@ -1,0 +1,267 @@
+# values-production.yaml - Configuración optimizada para producción
+environment: production
+
+# Configuración robusta del backend
+backend:
+  replicaCount: 5
+  autoscaling:
+    enabled: true
+    minReplicas: 3
+    maxReplicas: 20
+    targetCPUUtilizationPercentage: 60
+    targetMemoryUtilizationPercentage: 70
+  
+  resources:
+    limits:
+      cpu: 2000m
+      memory: 2Gi
+    requests:
+      cpu: 1000m
+      memory: 1Gi
+
+# ML Service con mayor capacidad
+mlService:
+  replicaCount: 3
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 10
+    targetCPUUtilizationPercentage: 70
+  
+  resources:
+    limits:
+      cpu: 4000m
+      memory: 8Gi
+    requests:
+      cpu: 2000m
+      memory: 4Gi
+
+# Config Service redundante
+configService:
+  replicaCount: 3
+  resources:
+    limits:
+      cpu: 1000m
+      memory: 1Gi
+    requests:
+      cpu: 500m
+      memory: 512Mi
+
+# Frontend escalable
+frontend:
+  replicaCount: 3
+  autoscaling:
+    enabled: true
+    minReplicas: 3
+    maxReplicas: 10
+    targetCPUUtilizationPercentage: 60
+
+# Celery Workers robustos
+celery:
+  worker:
+    replicaCount: 5
+    autoscaling:
+      enabled: true
+      minReplicas: 3
+      maxReplicas: 15
+      targetCPUUtilizationPercentage: 70
+    
+    resources:
+      limits:
+        cpu: 2000m
+        memory: 2Gi
+      requests:
+        cpu: 1000m
+        memory: 1Gi
+
+# PostgreSQL de alta disponibilidad
+postgresql:
+  architecture: replication
+  
+  primary:
+    persistence:
+      size: 100Gi
+    resources:
+      limits:
+        cpu: 2000m
+        memory: 4Gi
+      requests:
+        cpu: 1000m
+        memory: 2Gi
+  
+  readReplicas:
+    replicaCount: 2
+    persistence:
+      size: 100Gi
+    resources:
+      limits:
+        cpu: 1000m
+        memory: 2Gi
+      requests:
+        cpu: 500m
+        memory: 1Gi
+
+# Redis con alta disponibilidad
+redis:
+  architecture: replication
+  
+  master:
+    persistence:
+      size: 20Gi
+    resources:
+      limits:
+        cpu: 1000m
+        memory: 2Gi
+      requests:
+        cpu: 500m
+        memory: 1Gi
+  
+  replica:
+    replicaCount: 2
+    persistence:
+      size: 20Gi
+    resources:
+      limits:
+        cpu: 500m
+        memory: 1Gi
+      requests:
+        cpu: 250m
+        memory: 512Mi
+
+# MinIO con mayor almacenamiento
+minio:
+  mode: distributed
+  replicas: 4
+  
+  persistence:
+    size: 500Gi
+  
+  resources:
+    limits:
+      cpu: 1000m
+      memory: 2Gi
+    requests:
+      cpu: 500m
+      memory: 1Gi
+
+# RabbitMQ cluster
+rabbitmq:
+  clustering:
+    enabled: true
+    replicaCount: 3
+  
+  persistence:
+    size: 20Gi
+  
+  resources:
+    limits:
+      cpu: 1000m
+      memory: 2Gi
+    requests:
+      cpu: 500m
+      memory: 1Gi
+
+# Monitoreo completo
+monitoring:
+  prometheus:
+    server:
+      persistentVolume:
+        size: 100Gi
+      resources:
+        limits:
+          cpu: 2000m
+          memory: 8Gi
+        requests:
+          cpu: 1000m
+          memory: 4Gi
+    
+    # Configuración de alta disponibilidad
+    alertmanager:
+      enabled: true
+      replicaCount: 2
+      persistentVolume:
+        size: 10Gi
+    
+    # Configuración de retención
+    server:
+      retention: "30d"
+  
+  grafana:
+    persistence:
+      size: 20Gi
+    
+    resources:
+      limits:
+        cpu: 1000m
+        memory: 2Gi
+      requests:
+        cpu: 500m
+        memory: 1Gi
+    
+    # Alta disponibilidad
+    replicas: 2
+
+# Ingress con TLS y configuraciones de producción
+ingress:
+  annotations:
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/proxy-body-size: "100m"
+    nginx.ingress.kubernetes.io/rate-limit: "1000"
+    nginx.ingress.kubernetes.io/rate-limit-window: "1m"
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+  
+  hosts:
+    - host: traffic-system.company.com
+      paths:
+        - path: /
+          pathType: Prefix
+          service: frontend
+        - path: /api/
+          pathType: Prefix
+          service: backend
+        - path: /ml/
+          pathType: Prefix
+          service: ml-service
+        - path: /config/
+          pathType: Prefix
+          service: config-service
+  
+  tls:
+    - secretName: traffic-system-tls
+      hosts:
+        - traffic-system.company.com
+
+# Configuración de seguridad reforzada
+security:
+  podSecurityPolicy:
+    enabled: true
+  
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 1001
+    fsGroup: 1001
+    seccompProfile:
+      type: RuntimeDefault
+
+# Network policies habilitadas
+networking:
+  networkPolicy:
+    enabled: true
+    defaultDeny: true
+    allowInternalTraffic: true
+
+# Almacenamiento compartido de alta capacidad
+persistence:
+  storageClass: "ssd"  # Usar SSD en producción
+  
+  sharedStorage:
+    enabled: true
+    size: 1Ti
+    accessMode: ReadWriteMany
+
+# Variables de entorno optimizadas para producción
+env:
+  LOG_LEVEL: "INFO"
+  ENABLE_DEBUG_LOGS: "false"
+  ENABLE_METRICS: "true"

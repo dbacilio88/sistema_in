@@ -1,0 +1,339 @@
+# GitLab CI/CD Pipeline para Traffic System
+stages:
+  - validate
+  - test
+  - security
+  - build
+  - deploy-staging
+  - deploy-production
+  - cleanup
+
+variables:
+  DOCKER_HOST: tcp://docker:2376
+  DOCKER_TLS_CERTDIR: "/certs"
+  REGISTRY: $CI_REGISTRY
+  IMAGE_NAME: traffic-system
+  KUBECONFIG: /tmp/kubeconfig
+
+# Templates
+.python-base: &python-base
+  image: python:3.11-slim
+  before_script:
+    - python -m pip install --upgrade pip
+    - apt-get update && apt-get install -y build-essential libpq-dev
+
+.node-base: &node-base
+  image: node:18-alpine
+  before_script:
+    - npm ci --cache .npm --prefer-offline
+
+.kubectl-base: &kubectl-base
+  image: bitnami/kubectl:latest
+  before_script:
+    - echo "$KUBE_CONFIG" | base64 -d > /tmp/kubeconfig
+    - export KUBECONFIG=/tmp/kubeconfig
+
+# Validate stage
+validate-yaml:
+  stage: validate
+  image: alpine:latest
+  before_script:
+    - apk add --no-cache yamllint
+  script:
+    - yamllint deployment/kubernetes/*.yaml
+    - yamllint .gitlab-ci.yml
+  rules:
+    - changes:
+        - "deployment/kubernetes/*.yaml"
+        - ".gitlab-ci.yml"
+
+validate-dockerfiles:
+  stage: validate
+  image: hadolint/hadolint:latest-debian
+  script:
+    - hadolint deployment/docker/Dockerfile.*
+  rules:
+    - changes:
+        - "deployment/docker/*"
+
+# Test stage
+test-backend:
+  <<: *python-base
+  stage: test
+  variables:
+    DATABASE_URL: "sqlite:///test.db"
+  script:
+    - cd backend-django
+    - pip install -r requirements.txt
+    - pip install pytest pytest-django pytest-cov flake8 black isort
+    - flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+    - black --check .
+    - isort --check-only .
+    - python -m pytest tests/ --cov=. --cov-report=xml --cov-report=term
+  coverage: '/TOTAL.*\s+(\d+%)$/'
+  artifacts:
+    reports:
+      coverage_report:
+        coverage_format: cobertura
+        path: backend-django/coverage.xml
+    paths:
+      - backend-django/htmlcov/
+    expire_in: 1 week
+  rules:
+    - changes:
+        - "backend-django/**/*"
+        - "requirements.txt"
+
+test-ml-service:
+  <<: *python-base
+  stage: test
+  script:
+    - cd ml-service
+    - pip install -r requirements.txt
+    - pip install pytest pytest-asyncio pytest-cov flake8 black isort
+    - flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+    - black --check .
+    - isort --check-only .
+    - python -m pytest tests/ --cov=. --cov-report=xml --cov-report=term
+  coverage: '/TOTAL.*\s+(\d+%)$/'
+  artifacts:
+    reports:
+      coverage_report:
+        coverage_format: cobertura
+        path: ml-service/coverage.xml
+    expire_in: 1 week
+  rules:
+    - changes:
+        - "ml-service/**/*"
+
+test-config-service:
+  <<: *python-base
+  stage: test
+  script:
+    - cd config-management
+    - pip install -r requirements.txt
+    - pip install pytest pytest-asyncio pytest-cov flake8 black isort
+    - flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+    - black --check .
+    - isort --check-only .
+    - python -m pytest tests/ --cov=. --cov-report=xml --cov-report=term
+  coverage: '/TOTAL.*\s+(\d+%)$/'
+  artifacts:
+    reports:
+      coverage_report:
+        coverage_format: cobertura
+        path: config-management/coverage.xml
+    expire_in: 1 week
+  rules:
+    - changes:
+        - "config-management/**/*"
+
+test-frontend-dashboard:
+  <<: *node-base
+  stage: test
+  script:
+    - cd frontend-dashboard
+    - npm ci
+    - npm run lint
+    - npm run test -- --coverage --watchAll=false
+    - npm run build
+  artifacts:
+    paths:
+      - frontend-dashboard/dist/
+      - frontend-dashboard/coverage/
+    expire_in: 1 week
+  rules:
+    - changes:
+        - "frontend-dashboard/**/*"
+
+test-frontend-config:
+  <<: *node-base
+  stage: test
+  script:
+    - cd config-management/web
+    - npm ci
+    - npm run lint
+    - npm run test -- --coverage --watchAll=false
+    - npm run build
+  artifacts:
+    paths:
+      - config-management/web/dist/
+      - config-management/web/coverage/
+    expire_in: 1 week
+  rules:
+    - changes:
+        - "config-management/web/**/*"
+
+# Security stage
+security-scan:
+  stage: security
+  image: docker:latest
+  services:
+    - docker:dind
+  before_script:
+    - apk add --no-cache curl
+    - curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin
+  script:
+    - trivy fs --exit-code 0 --severity HIGH,CRITICAL --format table .
+    - trivy fs --exit-code 1 --severity CRITICAL --format json --output trivy-report.json .
+  artifacts:
+    reports:
+      dependency_scanning: trivy-report.json
+    expire_in: 1 week
+  allow_failure: true
+
+bandit-scan:
+  <<: *python-base
+  stage: security
+  script:
+    - pip install bandit
+    - bandit -r backend-django/ -f json -o bandit-backend.json || true
+    - bandit -r ml-service/ -f json -o bandit-ml.json || true
+    - bandit -r config-management/ -f json -o bandit-config.json || true
+  artifacts:
+    paths:
+      - bandit-*.json
+    expire_in: 1 week
+  allow_failure: true
+
+# Build stage
+.build-template: &build-template
+  stage: build
+  image: docker:latest
+  services:
+    - docker:dind
+  before_script:
+    - echo $CI_REGISTRY_PASSWORD | docker login -u $CI_REGISTRY_USER --password-stdin $CI_REGISTRY
+  script:
+    - export IMAGE_TAG=${CI_COMMIT_TAG:-$CI_COMMIT_SHORT_SHA}
+    - docker build -f deployment/docker/Dockerfile.$SERVICE -t $CI_REGISTRY_IMAGE/$SERVICE:$IMAGE_TAG .
+    - docker tag $CI_REGISTRY_IMAGE/$SERVICE:$IMAGE_TAG $CI_REGISTRY_IMAGE/$SERVICE:latest
+    - docker push $CI_REGISTRY_IMAGE/$SERVICE:$IMAGE_TAG
+    - docker push $CI_REGISTRY_IMAGE/$SERVICE:latest
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "main" || $CI_COMMIT_TAG'
+
+build-backend:
+  <<: *build-template
+  variables:
+    SERVICE: backend
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "main" || $CI_COMMIT_TAG'
+      changes:
+        - "backend-django/**/*"
+        - "deployment/docker/Dockerfile.backend"
+
+build-ml-service:
+  <<: *build-template
+  variables:
+    SERVICE: ml-service
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "main" || $CI_COMMIT_TAG'
+      changes:
+        - "ml-service/**/*"
+        - "deployment/docker/Dockerfile.ml-service"
+
+build-config-service:
+  <<: *build-template
+  variables:
+    SERVICE: config-service
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "main" || $CI_COMMIT_TAG'
+      changes:
+        - "config-management/**/*"
+        - "deployment/docker/Dockerfile.config-service"
+
+build-frontend:
+  <<: *build-template
+  variables:
+    SERVICE: frontend
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "main" || $CI_COMMIT_TAG'
+      changes:
+        - "frontend-dashboard/**/*"
+        - "config-management/web/**/*"
+        - "deployment/docker/Dockerfile.frontend"
+
+# Deploy staging
+deploy-staging:
+  <<: *kubectl-base
+  stage: deploy-staging
+  environment:
+    name: staging
+    url: https://staging.traffic-system.yourdomain.com
+  variables:
+    NAMESPACE: traffic-system-staging
+    KUBE_CONFIG: $KUBE_CONFIG_STAGING
+  script:
+    - export IMAGE_TAG=${CI_COMMIT_SHORT_SHA}
+    - |
+      for service in backend ml-service config-service frontend; do
+        kubectl set image deployment/$service $service=$CI_REGISTRY_IMAGE/$service:$IMAGE_TAG -n $NAMESPACE
+        kubectl rollout status deployment/$service -n $NAMESPACE --timeout=300s
+      done
+    # Smoke tests
+    - kubectl wait --for=condition=ready pod -l app=backend -n $NAMESPACE --timeout=300s
+    - kubectl run smoke-test-$CI_JOB_ID --rm -i --restart=Never --image=curlimages/curl -- curl -f http://backend-service.$NAMESPACE.svc.cluster.local:8000/health/
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "develop"'
+  when: manual
+
+# Deploy production
+deploy-production:
+  <<: *kubectl-base
+  stage: deploy-production
+  environment:
+    name: production
+    url: https://traffic-system.yourdomain.com
+  variables:
+    NAMESPACE: traffic-system
+    KUBE_CONFIG: $KUBE_CONFIG_PRODUCTION
+  script:
+    - export IMAGE_TAG=${CI_COMMIT_TAG}
+    - |
+      for service in backend ml-service config-service frontend; do
+        kubectl set image deployment/$service $service=$CI_REGISTRY_IMAGE/$service:$IMAGE_TAG -n $NAMESPACE
+        kubectl rollout status deployment/$service -n $NAMESPACE --timeout=600s
+      done
+    # Production tests
+    - kubectl wait --for=condition=ready pod -l app=backend -n $NAMESPACE --timeout=300s
+    - kubectl run prod-test-$CI_JOB_ID --rm -i --restart=Never --image=curlimages/curl -- curl -f http://backend-service.$NAMESPACE.svc.cluster.local:8000/health/
+  rules:
+    - if: '$CI_COMMIT_TAG =~ /^v\d+\.\d+\.\d+$/'
+  when: manual
+
+# Rollback production
+rollback-production:
+  <<: *kubectl-base
+  stage: deploy-production
+  environment:
+    name: production
+    url: https://traffic-system.yourdomain.com
+  variables:
+    NAMESPACE: traffic-system
+    KUBE_CONFIG: $KUBE_CONFIG_PRODUCTION
+  script:
+    - |
+      for service in backend ml-service config-service frontend; do
+        kubectl rollout undo deployment/$service -n $NAMESPACE
+        kubectl rollout status deployment/$service -n $NAMESPACE --timeout=300s
+      done
+  rules:
+    - if: '$CI_COMMIT_TAG =~ /^v\d+\.\d+\.\d+$/'
+  when: manual
+  allow_failure: false
+
+# Cleanup
+cleanup-registry:
+  stage: cleanup
+  image: alpine:latest
+  before_script:
+    - apk add --no-cache curl jq
+  script:
+    - |
+      # Limpiar imágenes antiguas manteniendo las últimas 10 versiones
+      echo "Cleaning up old container images..."
+      # Implementar lógica de limpieza del registry
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "schedule"'
+  allow_failure: true

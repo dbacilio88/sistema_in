@@ -1,0 +1,17 @@
+agnostic_nms: false
+batch_size: 1
+classes: null
+confidence_threshold: 0.8
+device: auto
+half_precision: false
+input_size: 
+- 640
+- 640
+max_det: 1000
+model_name: easyocr_plates
+model_path: models/easyocr
+model_version: 1.7.0
+nms_threshold: 0.4
+onnx: false
+openvino: false
+tensorrt: false

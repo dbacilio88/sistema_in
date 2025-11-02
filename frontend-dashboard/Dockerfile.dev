@@ -1,0 +1,18 @@
+# Dockerfile para desarrollo con hot reload
+FROM node:20-alpine
+
+WORKDIR /app
+
+# Copiar archivos de dependencias
+COPY package.json package-lock.json* ./
+
+# Instalar dependencias
+RUN npm ci
+
+# El código fuente se monta como volumen, no se copia aquí
+
+# Exponer puerto
+EXPOSE 3000
+
+# Comando para desarrollo con hot reload
+CMD ["npm", "run", "dev"]

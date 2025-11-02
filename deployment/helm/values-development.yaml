@@ -1,0 +1,140 @@
+# Configuración para diferentes entornos
+
+# values-development.yaml - Configuración mínima para desarrollo
+environment: development
+
+backend:
+  replicaCount: 1
+  autoscaling:
+    enabled: false
+  resources:
+    limits:
+      cpu: 500m
+      memory: 512Mi
+    requests:
+      cpu: 100m
+      memory: 256Mi
+
+mlService:
+  replicaCount: 1
+  autoscaling:
+    enabled: false
+  resources:
+    limits:
+      cpu: 1000m
+      memory: 1Gi
+    requests:
+      cpu: 500m
+      memory: 512Mi
+
+configService:
+  replicaCount: 1
+  resources:
+    limits:
+      cpu: 200m
+      memory: 256Mi
+    requests:
+      cpu: 100m
+      memory: 128Mi
+
+frontend:
+  replicaCount: 1
+  autoscaling:
+    enabled: false
+
+celery:
+  worker:
+    replicaCount: 1
+    autoscaling:
+      enabled: false
+
+# Bases de datos más pequeñas
+postgresql:
+  primary:
+    persistence:
+      size: 5Gi
+    resources:
+      limits:
+        cpu: 500m
+        memory: 512Mi
+      requests:
+        cpu: 250m
+        memory: 256Mi
+
+redis:
+  master:
+    persistence:
+      size: 2Gi
+    resources:
+      limits:
+        cpu: 200m
+        memory: 256Mi
+      requests:
+        cpu: 100m
+        memory: 128Mi
+
+minio:
+  persistence:
+    size: 10Gi
+  resources:
+    limits:
+      cpu: 200m
+      memory: 256Mi
+    requests:
+      cpu: 100m
+      memory: 128Mi
+
+rabbitmq:
+  persistence:
+    size: 2Gi
+  resources:
+    limits:
+      cpu: 200m
+      memory: 256Mi
+    requests:
+      cpu: 100m
+      memory: 128Mi
+
+# Monitoreo básico
+monitoring:
+  prometheus:
+    server:
+      persistentVolume:
+        size: 5Gi
+      resources:
+        limits:
+          cpu: 500m
+          memory: 1Gi
+        requests:
+          cpu: 250m
+          memory: 512Mi
+  
+  grafana:
+    persistence:
+      size: 2Gi
+    resources:
+      limits:
+        cpu: 200m
+        memory: 256Mi
+      requests:
+        cpu: 100m
+        memory: 128Mi
+
+# Ingress para desarrollo
+ingress:
+  hosts:
+    - host: traffic-system.local
+      paths:
+        - path: /
+          pathType: Prefix
+          service: frontend
+        - path: /api/
+          pathType: Prefix
+          service: backend
+        - path: /ml/
+          pathType: Prefix
+          service: ml-service
+        - path: /config/
+          pathType: Prefix
+          service: config-service
+  tls: []  # Sin TLS en desarrollo

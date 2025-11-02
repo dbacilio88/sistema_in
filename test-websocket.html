@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>WebSocket Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+        }
+        .log {
+            background: #f5f5f5;
+            padding: 15px;
+            border-radius: 5px;
+            margin: 10px 0;
+            max-height: 400px;
+            overflow-y: auto;
+            font-family: monospace;
+            font-size: 12px;
+        }
+        .success { color: green; font-weight: bold; }
+        .error { color: red; font-weight: bold; }
+        .info { color: blue; }
+        button {
+            background: #4CAF50;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            margin: 5px;
+        }
+        button:hover { background: #45a049; }
+        button.disconnect { background: #f44336; }
+        button.disconnect:hover { background: #da190b; }
+        input {
+            padding: 8px;
+            width: 400px;
+            font-size: 14px;
+        }
+    </style>
+</head>
+<body>
+    <h1>🔌 WebSocket Connection Test</h1>
+    
+    <div>
+        <label>WebSocket URL:</label><br>
+        <input type="text" id="wsUrl" value="ws://localhost:8001/api/ws/inference">
+        <button onclick="connect()">Connect</button>
+        <button onclick="disconnect()" class="disconnect">Disconnect</button>
+    </div>
+
+    <h3>Connection Log:</h3>
+    <div id="log" class="log"></div>
+
+    <script>
+        let ws = null;
+        const logDiv = document.getElementById('log');
+
+        function log(message, type = 'info') {
+            const timestamp = new Date().toLocaleTimeString();
+            const className = type === 'success' ? 'success' : type === 'error' ? 'error' : 'info';
+            logDiv.innerHTML += `<div class="${className}">[${timestamp}] ${message}</div>`;
+            logDiv.scrollTop = logDiv.scrollHeight;
+        }
+
+        function connect() {
+            const url = document.getElementById('wsUrl').value;
+            log(`🔄 Attempting to connect to: ${url}`);
+
+            try {
+                ws = new WebSocket(url);
+
+                ws.onopen = () => {
+                    log('✅ WebSocket connection OPENED successfully!', 'success');
+                    log(`   ReadyState: ${ws.readyState} (1 = OPEN)`, 'success');
+                    
+                    // Send a test ping
+                    setTimeout(() => {
+                        log('📤 Sending test ping...');
+                        ws.send(JSON.stringify({ type: 'ping' }));
+                    }, 1000);
+                };
+
+                ws.onmessage = (event) => {
+                    log(`📨 Received message: ${event.data.substring(0, 200)}`, 'success');
+                    try {
+                        const data = JSON.parse(event.data);
+                        log(`   Parsed: ${JSON.stringify(data)}`, 'info');
+                    } catch (e) {
+                        log(`   Could not parse as JSON`, 'info');
+                    }
+                };
+
+                ws.onerror = (error) => {
+                    log(`❌ WebSocket ERROR occurred!`, 'error');
+                    log(`   Error object: ${JSON.stringify(error)}`, 'error');
+                    log(`   This usually means the server is not reachable`, 'error');
+                };
+
+                ws.onclose = (event) => {
+                    log(`⚠️ WebSocket connection CLOSED`, 'error');
+                    log(`   Code: ${event.code}`, 'info');
+                    log(`   Reason: ${event.reason || 'No reason provided'}`, 'info');
+                    log(`   Clean close: ${event.wasClean}`, 'info');
+                    
+                    // Common close codes
+                    const closeCodes = {
+                        1000: 'Normal Closure',
+                        1001: 'Going Away',
+                        1002: 'Protocol Error',
+                        1003: 'Unsupported Data',
+                        1006: 'Abnormal Closure (no close frame)',
+                        1007: 'Invalid frame payload data',
+                        1008: 'Policy Violation',
+                        1009: 'Message too big',
+                        1010: 'Missing Extension',
+                        1011: 'Internal Error',
+                        1015: 'TLS Handshake Failure'
+                    };
+                    
+                    if (closeCodes[event.code]) {
+                        log(`   Meaning: ${closeCodes[event.code]}`, 'info');
+                    }
+                };
+
+            } catch (error) {
+                log(`❌ Exception while creating WebSocket: ${error.message}`, 'error');
+            }
+        }
+
+        function disconnect() {
+            if (ws) {
+                log('🔌 Closing connection...');
+                ws.close(1000, 'User requested disconnect');
+                ws = null;
+            } else {
+                log('⚠️ No active connection to close', 'error');
+            }
+        }
+
+        // Test HTTP endpoint first
+        log('🔍 Testing HTTP endpoint first...');
+        fetch('http://localhost:8001/docs')
+            .then(response => {
+                if (response.ok) {
+                    log('✅ HTTP endpoint is reachable (port 8001 is open)', 'success');
+                } else {
+                    log(`⚠️ HTTP endpoint responded with status: ${response.status}`, 'error');
+                }
+            })
+            .catch(error => {
+                log(`❌ Cannot reach HTTP endpoint: ${error.message}`, 'error');
+                log('   This means port 8001 is NOT accessible from your browser', 'error');
+                log('   SOLUTION: Configure WSL port forwarding (see instructions)', 'error');
+            });
+    </script>
+</body>
+</html>

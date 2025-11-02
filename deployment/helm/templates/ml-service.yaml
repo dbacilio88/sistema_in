@@ -1,0 +1,115 @@
+{{- if .Values.mlService.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "traffic-system.fullname" . }}-ml-service
+  labels:
+    {{- include "traffic-system.mlservice.labels" . | nindent 4 }}
+spec:
+  {{- if not .Values.mlService.autoscaling.enabled }}
+  replicas: {{ .Values.mlService.replicaCount }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "traffic-system.mlservice.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "traffic-system.mlservice.selectorLabels" . | nindent 8 }}
+    spec:
+      {{- with .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "traffic-system.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.security.securityContext | nindent 8 }}
+      {{- with .Values.mlService.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.mlService.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: ml-service
+          image: "{{ .Values.global.imageRegistry | default "" }}{{ .Values.images.mlService.repository }}:{{ .Values.images.mlService.tag }}"
+          imagePullPolicy: {{ .Values.images.mlService.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.mlService.service.targetPort }}
+              protocol: TCP
+          env:
+            {{- include "traffic-system.commonEnv" . | nindent 12 }}
+            {{- range $key, $value := .Values.mlService.env }}
+            - name: {{ $key }}
+              value: {{ $value | quote }}
+            {{- end }}
+          {{- with .Values.mlService.livenessProbe }}
+          livenessProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.mlService.readinessProbe }}
+          readinessProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          resources:
+            {{- toYaml .Values.mlService.resources | nindent 12 }}
+          volumeMounts:
+            - name: model-storage
+              mountPath: /app/models
+            {{- if .Values.persistence.sharedStorage.enabled }}
+            - name: shared-storage
+              mountPath: /app/data
+            {{- end }}
+      volumes:
+        - name: model-storage
+          emptyDir: {}
+        {{- if .Values.persistence.sharedStorage.enabled }}
+        - name: shared-storage
+          persistentVolumeClaim:
+            claimName: {{ include "traffic-system.fullname" . }}-shared-storage
+        {{- end }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "traffic-system.fullname" . }}-ml-service
+  labels:
+    {{- include "traffic-system.mlservice.labels" . | nindent 4 }}
+spec:
+  type: {{ .Values.mlService.service.type }}
+  ports:
+    - port: {{ .Values.mlService.service.port }}
+      targetPort: {{ .Values.mlService.service.targetPort }}
+      protocol: TCP
+      name: http
+  selector:
+    {{- include "traffic-system.mlservice.selectorLabels" . | nindent 4 }}
+{{- if .Values.mlService.autoscaling.enabled }}
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ include "traffic-system.fullname" . }}-ml-service
+  labels:
+    {{- include "traffic-system.mlservice.labels" . | nindent 4 }}
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ include "traffic-system.fullname" . }}-ml-service
+  minReplicas: {{ .Values.mlService.autoscaling.minReplicas }}
+  maxReplicas: {{ .Values.mlService.autoscaling.maxReplicas }}
+  metrics:
+    {{- if .Values.mlService.autoscaling.targetCPUUtilizationPercentage }}
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: {{ .Values.mlService.autoscaling.targetCPUUtilizationPercentage }}
+    {{- end }}
+{{- end }}
+{{- end }}

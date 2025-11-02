@@ -1,0 +1,31 @@
+{{- if .Values.security.serviceAccount.create -}}
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ include "traffic-system.serviceAccountName" . }}
+  labels:
+    {{- include "traffic-system.labels" . | nindent 4 }}
+  {{- with .Values.security.serviceAccount.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+automountServiceAccountToken: true
+{{- end }}
+{{- if .Values.persistence.sharedStorage.enabled }}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "traffic-system.fullname" . }}-shared-storage
+  labels:
+    {{- include "traffic-system.labels" . | nindent 4 }}
+spec:
+  accessModes:
+    - {{ .Values.persistence.sharedStorage.accessMode }}
+  resources:
+    requests:
+      storage: {{ .Values.persistence.sharedStorage.size }}
+  {{- if include "traffic-system.storageClass" . }}
+  storageClassName: {{ include "traffic-system.storageClass" . }}
+  {{- end }}
+{{- end }}

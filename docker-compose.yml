@@ -1,0 +1,496 @@
+#version: '3.8'
+
+services:
+  # ==================================
+  # DATABASE SERVICES
+  # ==================================
+  postgres:
+    image: postgres:16-alpine
+    container_name: traffic-postgres
+    environment:
+      POSTGRES_DB: ${DB_NAME:-traffic_system}
+      POSTGRES_USER: ${DB_USER:-postgres}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres!}
+      POSTGRES_INITDB_ARGS: "-E UTF8"
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./infrastructure/postgres/init:/docker-entrypoint-initdb.d
+    networks:
+      - traffic-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-postgres} -d ${DB_NAME:-traffic_system}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # ==================================
+  # CACHE & MESSAGE BROKER
+  # ==================================
+  redis:
+    image: redis:7-alpine
+    container_name: traffic-redis
+    command: redis-server --appendonly yes --maxmemory 512mb --maxmemory-policy allkeys-lru
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - traffic-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+
+  rabbitmq:
+    image: rabbitmq:3.12-management-alpine
+    container_name: traffic-rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-admin}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-SecurePassword123!}
+      RABBITMQ_DEFAULT_VHOST: ${RABBITMQ_VHOST:-/}
+    ports:
+      - "5672:5672"    # AMQP
+      - "15672:15672"  # Management UI
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    networks:
+      - traffic-network
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    restart: unless-stopped
+
+  # ==================================
+  # OBJECT STORAGE
+  # ==================================
+  minio:
+    image: minio/minio:latest
+    container_name: traffic-minio
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:-admin}
+      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY:-SecurePassword123!}
+    ports:
+      - "9000:9000"  # API
+      - "9001:9001"  # Console
+    volumes:
+      - minio_data:/data
+    networks:
+      - traffic-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+    restart: unless-stopped
+
+  # MinIO Client for bucket initialization
+  minio-init:
+    image: minio/mc:latest
+    container_name: traffic-minio-init
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+      mc alias set myminio http://minio:9000 ${MINIO_ACCESS_KEY:-admin} ${MINIO_SECRET_KEY:-SecurePassword123!};
+      mc mb --ignore-existing myminio/traffic-snapshots;
+      mc mb --ignore-existing myminio/traffic-videos;
+      mc mb --ignore-existing myminio/ml-models;
+      mc policy set download myminio/traffic-snapshots;
+      mc policy set download myminio/traffic-videos;
+      exit 0;
+      "
+    networks:
+      - traffic-network
+
+  # ==================================
+  # APPLICATION SERVICES
+  # ==================================
+  django:
+    build:
+      context: ./backend-django
+      dockerfile: Dockerfile
+    container_name: traffic-django
+    environment:
+      DATABASE_URL: postgresql://${DB_USER:-postgres}:${DB_PASSWORD:-postgres123!}@postgres:5432/${DB_NAME:-traffic_system}
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_USER: ${DB_USER:-postgres}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres123!}
+      POSTGRES_DB: ${DB_NAME:-traffic_system}
+      REDIS_URL: redis://redis:6379/0
+      RABBITMQ_URL: amqp://${RABBITMQ_USER:-admin}:${RABBITMQ_PASSWORD:-SecurePassword123!}@rabbitmq:5672/
+      MINIO_ENDPOINT: minio:9000
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-admin}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-SecurePassword123!}
+      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:-django-insecure-dev-key}
+      DEBUG: ${DEBUG:-True}
+      ALLOWED_HOSTS: ${ALLOWED_HOSTS:-localhost,127.0.0.1,0.0.0.0,django}
+      SECURE_SSL_REDIRECT: ${SECURE_SSL_REDIRECT:-False}
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend-django:/app
+      - django_static:/app/staticfiles
+      - django_media:/app/media
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    networks:
+      - traffic-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/health/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    restart: unless-stopped
+
+  inference:
+    build:
+      context: ./inference-service
+      dockerfile: Dockerfile
+    container_name: traffic-inference
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8001 --workers 4
+    environment:
+      DATABASE_URL: postgresql://${DB_USER:-admin}:${DB_PASSWORD:-SecurePassword123!}@postgres:5432/${DB_NAME:-traffic_system}
+      REDIS_URL: redis://redis:6379/0
+      RABBITMQ_URL: amqp://${RABBITMQ_USER:-admin}:${RABBITMQ_PASSWORD:-SecurePassword123!}@rabbitmq:5672/
+      MINIO_ENDPOINT: minio:9000
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-admin}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-SecurePassword123!}
+      INFERENCE_DEVICE: ${INFERENCE_DEVICE:-cpu}
+      GPU_DEVICE_ID: ${GPU_DEVICE_ID:-0}
+    ports:
+      - "8001:8001"
+    volumes:
+      - ./inference-service:/app
+      - ml_models:/app/models
+      - camera_calibrations:/app/calibration
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    networks:
+      - traffic-network
+    # Uncomment for GPU support
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: 1
+    #           capabilities: [gpu]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/api/v1/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    restart: unless-stopped
+
+  # ==================================
+  # FRONTEND DASHBOARD
+  # ==================================
+  frontend:
+    build:
+      context: ./frontend-dashboard
+      dockerfile: Dockerfile.dev
+    container_name: traffic-frontend
+    ports:
+      - "3002:3000"
+    environment:
+      NODE_ENV: development
+      NEXT_PUBLIC_API_URL: http://localhost:8000
+      NEXT_PUBLIC_ML_SERVICE_URL: http://localhost:8001
+      NEXT_PUBLIC_WS_URL: ws://localhost:8000
+      NEXT_PUBLIC_WS_INFERENCE_URL: ws://localhost:8001/api/ws/inference
+      WATCHPACK_POLLING: "true"
+    volumes:
+      - ./frontend-dashboard:/app
+      - /app/node_modules
+      - /app/.next
+    depends_on:
+      - django
+      - inference
+    networks:
+      - traffic-network
+    restart: unless-stopped
+
+  # ==================================
+  # CONFIG MANAGEMENT SERVICE
+  # ==================================
+  config-management:
+    build:
+      context: ./config-management
+      dockerfile: Dockerfile
+    container_name: traffic-config-mgmt
+    ports:
+      - "8080:8080"
+    environment:
+      # Database connection
+      DATABASE_URL: postgresql://${DB_USER:-postgres}:${DB_PASSWORD:-postgres123!}@postgres:5432/${DB_NAME:-traffic_system}
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: ${DB_NAME:-traffic_system}
+      POSTGRES_USER: ${DB_USER:-postgres}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres123!}
+      
+      # Redis connection
+      REDIS_URL: redis://redis:6379/3
+      
+      # API Settings
+      API_HOST: 0.0.0.0
+      API_PORT: 8080
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      ENVIRONMENT: development
+      
+      # Integration URLs
+      DJANGO_API_URL: http://django:8000
+      ML_SERVICE_URL: http://inference:8001
+      
+      # Storage
+      CONFIG_STORAGE_PATH: /app/configs
+      BACKUP_PATH: /app/backups
+    volumes:
+      - ./config-management:/app
+      - config_storage:/app/configs
+      - config_backups:/app/backups
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      django:
+        condition: service_healthy
+    networks:
+      - traffic-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    restart: unless-stopped
+
+  celery-worker:
+    build:
+      context: ./backend-django
+      dockerfile: Dockerfile
+    container_name: traffic-celery-worker
+    entrypoint: []
+    command: >
+      sh -c "
+      python manage.py migrate --noinput &&
+      celery -A config worker --loglevel=info --concurrency=4
+      "
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: ${DB_NAME:-traffic_system}
+      POSTGRES_USER: ${DB_USER:-admin}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-SecurePassword123!}
+      DATABASE_URL: postgresql://${DB_USER:-admin}:${DB_PASSWORD:-SecurePassword123!}@postgres:5432/${DB_NAME:-traffic_system}
+      REDIS_URL: redis://redis:6379/0
+      CELERY_BROKER_URL: redis://redis:6379/1
+      CELERY_RESULT_BACKEND: redis://redis:6379/2
+      RABBITMQ_URL: amqp://${RABBITMQ_USER:-admin}:${RABBITMQ_PASSWORD:-SecurePassword123!}@rabbitmq:5672/
+      MINIO_ENDPOINT: minio:9000
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-admin}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-SecurePassword123!}
+    volumes:
+      - ./backend-django:/app
+    depends_on:
+      - django
+      - redis
+      - rabbitmq
+    networks:
+      - traffic-network
+    restart: unless-stopped
+
+  celery-beat:
+    build:
+      context: ./backend-django
+      dockerfile: Dockerfile
+    container_name: traffic-celery-beat
+    entrypoint: []
+    command: >
+      sh -c "
+      python manage.py migrate --noinput &&
+      celery -A config beat --loglevel=info --scheduler django_celery_beat.schedulers:DatabaseScheduler
+      "
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: ${DB_NAME:-traffic_system}
+      POSTGRES_USER: ${DB_USER:-admin}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-SecurePassword123!}
+      DATABASE_URL: postgresql://${DB_USER:-admin}:${DB_PASSWORD:-SecurePassword123!}@postgres:5432/${DB_NAME:-traffic_system}
+      REDIS_URL: redis://redis:6379/0
+      CELERY_BROKER_URL: redis://redis:6379/1
+      CELERY_RESULT_BACKEND: redis://redis:6379/2
+    volumes:
+      - ./backend-django:/app
+    depends_on:
+      - django
+      - redis
+    networks:
+      - traffic-network
+    restart: unless-stopped
+
+  # ==================================
+  # MONITORING & OBSERVABILITY
+  # ==================================
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: traffic-prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--web.enable-lifecycle'
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./infrastructure/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    networks:
+      - traffic-network
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: traffic-grafana
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+      GF_INSTALL_PLUGINS: grafana-piechart-panel
+    ports:
+      - "3001:3000"
+    volumes:
+      - ./infrastructure/grafana/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ./infrastructure/grafana/datasources:/etc/grafana/provisioning/datasources:ro
+      - grafana_data:/var/lib/grafana
+    depends_on:
+      - prometheus
+    networks:
+      - traffic-network
+    restart: unless-stopped
+
+  # ==================================
+  # OPTIONAL: ELK Stack for Logging
+  # ==================================
+  # elasticsearch:
+  #   image: docker.elastic.co/elasticsearch/elasticsearch:8.11.0
+  #   container_name: traffic-elasticsearch
+  #   environment:
+  #     - discovery.type=single-node
+  #     - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+  #   ports:
+  #     - "9200:9200"
+  #   volumes:
+  #     - elasticsearch_data:/usr/share/elasticsearch/data
+  #   networks:
+  #     - traffic-network
+
+  # logstash:
+  #   image: docker.elastic.co/logstash/logstash:8.11.0
+  #   container_name: traffic-logstash
+  #   volumes:
+  #     - ./infrastructure/logstash/logstash.conf:/usr/share/logstash/pipeline/logstash.conf:ro
+  #   ports:
+  #     - "5000:5000"
+  #   depends_on:
+  #     - elasticsearch
+  #   networks:
+  #     - traffic-network
+
+  # kibana:
+  #   image: docker.elastic.co/kibana/kibana:8.11.0
+  #   container_name: traffic-kibana
+  #   ports:
+  #     - "5601:5601"
+  #   depends_on:
+  #     - elasticsearch
+  #   networks:
+  #     - traffic-network
+
+  # ==================================
+  # OPTIONAL: MLflow for ML Tracking
+  # ==================================
+  # mlflow:
+  #   image: ghcr.io/mlflow/mlflow:v2.8.1
+  #   container_name: traffic-mlflow
+  #   command: mlflow server --backend-store-uri postgresql://${DB_USER:-admin}:${DB_PASSWORD:-SecurePassword123!}@postgres:5432/mlflow --default-artifact-root s3://ml-models/mlflow --host 0.0.0.0
+  #   environment:
+  #     AWS_ACCESS_KEY_ID: ${MINIO_ACCESS_KEY:-admin}
+  #     AWS_SECRET_ACCESS_KEY: ${MINIO_SECRET_KEY:-SecurePassword123!}
+  #     MLFLOW_S3_ENDPOINT_URL: http://minio:9000
+  #   ports:
+  #     - "5000:5000"
+  #   depends_on:
+  #     - postgres
+  #     - minio
+  #   networks:
+  #     - traffic-network
+
+# ==================================
+# NETWORKS
+# ==================================
+networks:
+  traffic-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.28.0.0/16
+
+# ==================================
+# VOLUMES
+# ==================================
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+  rabbitmq_data:
+    driver: local
+  minio_data:
+    driver: local
+  django_static:
+    driver: local
+  django_media:
+    driver: local
+  ml_models:
+    driver: local
+  camera_calibrations:
+    driver: local
+  prometheus_data:
+    driver: local
+  grafana_data:
+    driver: local
+  config_storage:
+    driver: local
+  config_backups:
+    driver: local
+  # elasticsearch_data:
+  #   driver: local

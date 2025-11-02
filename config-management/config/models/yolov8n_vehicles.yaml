@@ -1,0 +1,21 @@
+agnostic_nms: false
+batch_size: 1
+classes:
+- 2
+- 3
+- 5
+- 7
+confidence_threshold: 0.5
+device: auto
+half_precision: false
+input_size: 
+- 640
+- 640
+max_det: 1000
+model_name: yolov8n_vehicles
+model_path: models/yolov8n.pt
+model_version: 8.0.0
+nms_threshold: 0.4
+onnx: false
+openvino: false
+tensorrt: false

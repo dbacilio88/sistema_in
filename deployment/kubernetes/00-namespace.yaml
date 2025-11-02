@@ -1,0 +1,131 @@
+# Namespace para el sistema de detección de infracciones
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: traffic-system
+  labels:
+    name: traffic-system
+    project: traffic-violation-detection
+    environment: production
+---
+# ConfigMap para configuraciones globales
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: traffic-system-config
+  namespace: traffic-system
+data:
+  # Configuración de la aplicación
+  ENVIRONMENT: "production"
+  LOG_LEVEL: "INFO"
+  METRICS_ENABLED: "true"
+  METRICS_PORT: "8090"
+  
+  # Configuración de base de datos
+  DATABASE_HOST: "postgres-service"
+  DATABASE_PORT: "5432"
+  DATABASE_NAME: "traffic_db"
+  
+  # Configuración de Redis
+  REDIS_HOST: "redis-service"
+  REDIS_PORT: "6379"
+  REDIS_DB: "0"
+  
+  # Configuración de MinIO
+  MINIO_ENDPOINT: "minio-service:9000"
+  MINIO_BUCKET: "traffic-data"
+  MINIO_USE_SSL: "false"
+  
+  # Configuración de RabbitMQ
+  RABBITMQ_HOST: "rabbitmq-service"
+  RABBITMQ_PORT: "5672"
+  RABBITMQ_MANAGEMENT_PORT: "15672"
+  
+  # URLs de servicios
+  BACKEND_URL: "http://backend-service:8000"
+  ML_SERVICE_URL: "http://ml-service:8001"
+  CONFIG_SERVICE_URL: "http://config-service:8080"
+  FRONTEND_URL: "http://frontend-service:3000"
+---
+# Secret para credenciales sensibles
+apiVersion: v1
+kind: Secret
+metadata:
+  name: traffic-system-secrets
+  namespace: traffic-system
+type: Opaque
+data:
+  # Database credentials (base64 encoded)
+  DATABASE_USER: dHJhZmZpY191c2Vy # traffic_user
+  DATABASE_PASSWORD: dHJhZmZpY19wYXNz # traffic_pass
+  
+  # JWT Secret Key
+  JWT_SECRET_KEY: c3VwZXItc2VjcmV0LWp3dC1rZXktZm9yLXByb2R1Y3Rpb24= # super-secret-jwt-key-for-production
+  
+  # MinIO credentials
+  MINIO_ACCESS_KEY: dHJhZmZpY2FkbWlu # trafficadmin
+  MINIO_SECRET_KEY: dHJhZmZpY3NlY3JldDEyMw== # trafficsecret123
+  
+  # RabbitMQ credentials
+  RABBITMQ_USER: dHJhZmZpY191c2Vy # traffic_user
+  RABBITMQ_PASSWORD: dHJhZmZpY19wYXNz # traffic_pass
+  
+  # Redis password (opcional)
+  REDIS_PASSWORD: ""
+---
+# NetworkPolicy para seguridad de red
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: traffic-system-network-policy
+  namespace: traffic-system
+spec:
+  podSelector: {}
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          name: traffic-system
+    - namespaceSelector:
+        matchLabels:
+          name: kube-system
+  egress:
+  - to: []
+---
+# ResourceQuota para limitar recursos del namespace
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: traffic-system-quota
+  namespace: traffic-system
+spec:
+  hard:
+    requests.cpu: "8"
+    requests.memory: 16Gi
+    limits.cpu: "16"
+    limits.memory: 32Gi
+    persistentvolumeclaims: "10"
+    services: "20"
+    pods: "50"
+---
+# LimitRange para definir límites por defecto
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: traffic-system-limits
+  namespace: traffic-system
+spec:
+  limits:
+  - default:
+      cpu: 500m
+      memory: 512Mi
+    defaultRequest:
+      cpu: 100m
+      memory: 128Mi
+    type: Container
+  - default:
+      storage: 1Gi
+    type: PersistentVolumeClaim

@@ -1,0 +1,504 @@
+# PostgreSQL StatefulSet para persistencia de datos
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: postgres-pvc
+  namespace: traffic-system
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 20Gi
+  storageClassName: fast-ssd
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: postgres
+  namespace: traffic-system
+  labels:
+    app: postgres
+    component: database
+spec:
+  serviceName: postgres-service
+  replicas: 1
+  selector:
+    matchLabels:
+      app: postgres
+  template:
+    metadata:
+      labels:
+        app: postgres
+        component: database
+    spec:
+      containers:
+      - name: postgres
+        image: postgres:15-alpine
+        ports:
+        - containerPort: 5432
+        env:
+        - name: POSTGRES_DB
+          valueFrom:
+            configMapKeyRef:
+              name: traffic-system-config
+              key: DATABASE_NAME
+        - name: POSTGRES_USER
+          valueFrom:
+            secretKeyRef:
+              name: traffic-system-secrets
+              key: DATABASE_USER
+        - name: POSTGRES_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: traffic-system-secrets
+              key: DATABASE_PASSWORD
+        - name: PGDATA
+          value: /var/lib/postgresql/data/pgdata
+        volumeMounts:
+        - name: postgres-storage
+          mountPath: /var/lib/postgresql/data
+        - name: postgres-init
+          mountPath: /docker-entrypoint-initdb.d
+        readinessProbe:
+          exec:
+            command:
+            - pg_isready
+            - -U
+            - $(POSTGRES_USER)
+            - -d
+            - $(POSTGRES_DB)
+          initialDelaySeconds: 15
+          periodSeconds: 5
+        livenessProbe:
+          exec:
+            command:
+            - pg_isready
+            - -U
+            - $(POSTGRES_USER)
+            - -d
+            - $(POSTGRES_DB)
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        resources:
+          requests:
+            cpu: 250m
+            memory: 512Mi
+          limits:
+            cpu: 1000m
+            memory: 2Gi
+      volumes:
+      - name: postgres-storage
+        persistentVolumeClaim:
+          claimName: postgres-pvc
+      - name: postgres-init
+        configMap:
+          name: postgres-init-config
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: postgres-init-config
+  namespace: traffic-system
+data:
+  01-init.sql: |
+    -- Crear extensiones necesarias
+    CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+    CREATE EXTENSION IF NOT EXISTS "postgis";
+    CREATE EXTENSION IF NOT EXISTS "pg_stat_statements";
+    
+    -- Configurar timezone
+    SET timezone = 'UTC';
+    
+    -- Crear índices para optimización
+    CREATE INDEX IF NOT EXISTS idx_infractions_created_at ON infractions_infraction(created_at);
+    CREATE INDEX IF NOT EXISTS idx_infractions_camera_id ON infractions_infraction(camera_id);
+    CREATE INDEX IF NOT EXISTS idx_infractions_license_plate ON infractions_infraction(license_plate);
+    CREATE INDEX IF NOT EXISTS idx_vehicles_license_plate ON vehicles_vehicle(license_plate);
+    
+    -- Configurar autovacuum para mejor performance
+    ALTER SYSTEM SET shared_preload_libraries = 'pg_stat_statements';
+    ALTER SYSTEM SET track_activity_query_size = 2048;
+    ALTER SYSTEM SET pg_stat_statements.track = 'all';
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres-service
+  namespace: traffic-system
+  labels:
+    app: postgres
+    component: database
+spec:
+  type: ClusterIP
+  ports:
+  - port: 5432
+    targetPort: 5432
+    protocol: TCP
+  selector:
+    app: postgres
+---
+# Redis StatefulSet para cache y sesiones
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: redis-pvc
+  namespace: traffic-system
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
+  storageClassName: fast-ssd
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: redis
+  namespace: traffic-system
+  labels:
+    app: redis
+    component: cache
+spec:
+  serviceName: redis-service
+  replicas: 1
+  selector:
+    matchLabels:
+      app: redis
+  template:
+    metadata:
+      labels:
+        app: redis
+        component: cache
+    spec:
+      containers:
+      - name: redis
+        image: redis:7-alpine
+        ports:
+        - containerPort: 6379
+        command:
+        - redis-server
+        - /etc/redis/redis.conf
+        volumeMounts:
+        - name: redis-storage
+          mountPath: /data
+        - name: redis-config
+          mountPath: /etc/redis
+        readinessProbe:
+          exec:
+            command:
+            - redis-cli
+            - ping
+          initialDelaySeconds: 5
+          periodSeconds: 5
+        livenessProbe:
+          exec:
+            command:
+            - redis-cli
+            - ping
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        resources:
+          requests:
+            cpu: 100m
+            memory: 256Mi
+          limits:
+            cpu: 500m
+            memory: 1Gi
+      volumes:
+      - name: redis-storage
+        persistentVolumeClaim:
+          claimName: redis-pvc
+      - name: redis-config
+        configMap:
+          name: redis-config
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: redis-config
+  namespace: traffic-system
+data:
+  redis.conf: |
+    # Redis configuración para producción
+    bind 0.0.0.0
+    port 6379
+    dir /data
+    save 900 1
+    save 300 10
+    save 60 10000
+    
+    # Configuración de memoria
+    maxmemory 512mb
+    maxmemory-policy allkeys-lru
+    
+    # Configuración de logging
+    loglevel notice
+    logfile ""
+    
+    # Configuración de persistencia
+    appendonly yes
+    appendfsync everysec
+    
+    # Configuración de red
+    tcp-keepalive 300
+    timeout 300
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis-service
+  namespace: traffic-system
+  labels:
+    app: redis
+    component: cache
+spec:
+  type: ClusterIP
+  ports:
+  - port: 6379
+    targetPort: 6379
+    protocol: TCP
+  selector:
+    app: redis
+---
+# MinIO StatefulSet para almacenamiento de objetos
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: minio-pvc
+  namespace: traffic-system
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 100Gi
+  storageClassName: standard
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: minio
+  namespace: traffic-system
+  labels:
+    app: minio
+    component: storage
+spec:
+  serviceName: minio-service
+  replicas: 1
+  selector:
+    matchLabels:
+      app: minio
+  template:
+    metadata:
+      labels:
+        app: minio
+        component: storage
+    spec:
+      containers:
+      - name: minio
+        image: minio/minio:latest
+        ports:
+        - containerPort: 9000
+        - containerPort: 9001
+        env:
+        - name: MINIO_ROOT_USER
+          valueFrom:
+            secretKeyRef:
+              name: traffic-system-secrets
+              key: MINIO_ACCESS_KEY
+        - name: MINIO_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: traffic-system-secrets
+              key: MINIO_SECRET_KEY
+        command:
+        - /bin/bash
+        - -c
+        args:
+        - minio server /data --console-address ":9001"
+        volumeMounts:
+        - name: minio-storage
+          mountPath: /data
+        readinessProbe:
+          httpGet:
+            path: /minio/health/ready
+            port: 9000
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        livenessProbe:
+          httpGet:
+            path: /minio/health/live
+            port: 9000
+          initialDelaySeconds: 60
+          periodSeconds: 20
+        resources:
+          requests:
+            cpu: 250m
+            memory: 512Mi
+          limits:
+            cpu: 1000m
+            memory: 2Gi
+      volumes:
+      - name: minio-storage
+        persistentVolumeClaim:
+          claimName: minio-pvc
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: minio-service
+  namespace: traffic-system
+  labels:
+    app: minio
+    component: storage
+spec:
+  type: ClusterIP
+  ports:
+  - name: api
+    port: 9000
+    targetPort: 9000
+    protocol: TCP
+  - name: console
+    port: 9001
+    targetPort: 9001
+    protocol: TCP
+  selector:
+    app: minio
+---
+# RabbitMQ StatefulSet para message queuing
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: rabbitmq-pvc
+  namespace: traffic-system
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+  storageClassName: standard
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: rabbitmq
+  namespace: traffic-system
+  labels:
+    app: rabbitmq
+    component: messaging
+spec:
+  serviceName: rabbitmq-service
+  replicas: 1
+  selector:
+    matchLabels:
+      app: rabbitmq
+  template:
+    metadata:
+      labels:
+        app: rabbitmq
+        component: messaging
+    spec:
+      containers:
+      - name: rabbitmq
+        image: rabbitmq:3-management-alpine
+        ports:
+        - containerPort: 5672
+        - containerPort: 15672
+        env:
+        - name: RABBITMQ_DEFAULT_USER
+          valueFrom:
+            secretKeyRef:
+              name: traffic-system-secrets
+              key: RABBITMQ_USER
+        - name: RABBITMQ_DEFAULT_PASS
+          valueFrom:
+            secretKeyRef:
+              name: traffic-system-secrets
+              key: RABBITMQ_PASSWORD
+        - name: RABBITMQ_DEFAULT_VHOST
+          value: "traffic"
+        volumeMounts:
+        - name: rabbitmq-storage
+          mountPath: /var/lib/rabbitmq
+        - name: rabbitmq-config
+          mountPath: /etc/rabbitmq
+        readinessProbe:
+          exec:
+            command:
+            - rabbitmq-diagnostics
+            - -q
+            - ping
+          initialDelaySeconds: 20
+          periodSeconds: 10
+        livenessProbe:
+          exec:
+            command:
+            - rabbitmq-diagnostics
+            - -q
+            - status
+          initialDelaySeconds: 60
+          periodSeconds: 30
+        resources:
+          requests:
+            cpu: 200m
+            memory: 512Mi
+          limits:
+            cpu: 1000m
+            memory: 2Gi
+      volumes:
+      - name: rabbitmq-storage
+        persistentVolumeClaim:
+          claimName: rabbitmq-pvc
+      - name: rabbitmq-config
+        configMap:
+          name: rabbitmq-config
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: rabbitmq-config
+  namespace: traffic-system
+data:
+  rabbitmq.conf: |
+    # RabbitMQ configuración para producción
+    loopback_users.guest = false
+    listeners.tcp.default = 5672
+    management.tcp.port = 15672
+    
+    # Configuración de memoria
+    vm_memory_high_watermark.relative = 0.6
+    disk_free_limit.relative = 2.0
+    
+    # Configuración de clustering (para futuro)
+    cluster_formation.peer_discovery_backend = rabbit_peer_discovery_k8s
+    cluster_formation.k8s.host = kubernetes.default.svc.cluster.local
+    cluster_formation.k8s.address_type = hostname
+    
+    # Configuración de logs
+    log.console = true
+    log.console.level = info
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: rabbitmq-service
+  namespace: traffic-system
+  labels:
+    app: rabbitmq
+    component: messaging
+spec:
+  type: ClusterIP
+  ports:
+  - name: amqp
+    port: 5672
+    targetPort: 5672
+    protocol: TCP
+  - name: management
+    port: 15672
+    targetPort: 15672
+    protocol: TCP
+  selector:
+    app: rabbitmq

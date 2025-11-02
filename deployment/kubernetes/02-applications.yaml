@@ -1,0 +1,555 @@
+# Backend Django Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend
+  namespace: traffic-system
+  labels:
+    app: backend
+    component: api
+    tier: backend
+spec:
+  replicas: 3
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app: backend
+  template:
+    metadata:
+      labels:
+        app: backend
+        component: api
+        tier: backend
+    spec:
+      initContainers:
+      - name: migrate
+        image: traffic-system/backend:latest
+        command: ['python', 'manage.py', 'migrate']
+        env:
+        - name: DATABASE_URL
+          value: "postgresql://$(DATABASE_USER):$(DATABASE_PASSWORD)@$(DATABASE_HOST):$(DATABASE_PORT)/$(DATABASE_NAME)"
+        - name: DATABASE_HOST
+          valueFrom:
+            configMapKeyRef:
+              name: traffic-system-config
+              key: DATABASE_HOST
+        - name: DATABASE_PORT
+          valueFrom:
+            configMapKeyRef:
+              name: traffic-system-config
+              key: DATABASE_PORT
+        - name: DATABASE_NAME
+          valueFrom:
+            configMapKeyRef:
+              name: traffic-system-config
+              key: DATABASE_NAME
+        - name: DATABASE_USER
+          valueFrom:
+            secretKeyRef:
+              name: traffic-system-secrets
+              key: DATABASE_USER
+        - name: DATABASE_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: traffic-system-secrets
+              key: DATABASE_PASSWORD
+      containers:
+      - name: backend
+        image: traffic-system/backend:latest
+        ports:
+        - containerPort: 8000
+        env:
+        - name: ENVIRONMENT
+          valueFrom:
+            configMapKeyRef:
+              name: traffic-system-config
+              key: ENVIRONMENT
+        - name: DEBUG
+          value: "False"
+        - name: DATABASE_URL
+          value: "postgresql://$(DATABASE_USER):$(DATABASE_PASSWORD)@$(DATABASE_HOST):$(DATABASE_PORT)/$(DATABASE_NAME)"
+        - name: DATABASE_HOST
+          valueFrom:
+            configMapKeyRef:
+              name: traffic-system-config
+              key: DATABASE_HOST
+        - name: DATABASE_PORT
+          valueFrom:
+            configMapKeyRef:
+              name: traffic-system-config
+              key: DATABASE_PORT
+        - name: DATABASE_NAME
+          valueFrom:
+            configMapKeyRef:
+              name: traffic-system-config
+              key: DATABASE_NAME
+        - name: DATABASE_USER
+          valueFrom:
+            secretKeyRef:
+              name: traffic-system-secrets
+              key: DATABASE_USER
+        - name: DATABASE_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: traffic-system-secrets
+              key: DATABASE_PASSWORD
+        - name: REDIS_URL
+          value: "redis://$(REDIS_HOST):$(REDIS_PORT)/$(REDIS_DB)"
+        - name: REDIS_HOST
+          valueFrom:
+            configMapKeyRef:
+              name: traffic-system-config
+              key: REDIS_HOST
+        - name: REDIS_PORT
+          valueFrom:
+            configMapKeyRef:
+              name: traffic-system-config
+              key: REDIS_PORT
+        - name: REDIS_DB
+          valueFrom:
+            configMapKeyRef:
+              name: traffic-system-config
+              key: REDIS_DB
+        - name: JWT_SECRET_KEY
+          valueFrom:
+            secretKeyRef:
+              name: traffic-system-secrets
+              key: JWT_SECRET_KEY
+        - name: MINIO_ENDPOINT
+          valueFrom:
+            configMapKeyRef:
+              name: traffic-system-config
+              key: MINIO_ENDPOINT
+        - name: MINIO_ACCESS_KEY
+          valueFrom:
+            secretKeyRef:
+              name: traffic-system-secrets
+              key: MINIO_ACCESS_KEY
+        - name: MINIO_SECRET_KEY
+          valueFrom:
+            secretKeyRef:
+              name: traffic-system-secrets
+              key: MINIO_SECRET_KEY
+        - name: MINIO_BUCKET
+          valueFrom:
+            configMapKeyRef:
+              name: traffic-system-config
+              key: MINIO_BUCKET
+        - name: RABBITMQ_URL
+          value: "amqp://$(RABBITMQ_USER):$(RABBITMQ_PASSWORD)@$(RABBITMQ_HOST):$(RABBITMQ_PORT)/traffic"
+        - name: RABBITMQ_HOST
+          valueFrom:
+            configMapKeyRef:
+              name: traffic-system-config
+              key: RABBITMQ_HOST
+        - name: RABBITMQ_PORT
+          valueFrom:
+            configMapKeyRef:
+              name: traffic-system-config
+              key: RABBITMQ_PORT
+        - name: RABBITMQ_USER
+          valueFrom:
+            secretKeyRef:
+              name: traffic-system-secrets
+              key: RABBITMQ_USER
+        - name: RABBITMQ_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: traffic-system-secrets
+              key: RABBITMQ_PASSWORD
+        readinessProbe:
+          httpGet:
+            path: /health/
+            port: 8000
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        livenessProbe:
+          httpGet:
+            path: /health/
+            port: 8000
+          initialDelaySeconds: 60
+          periodSeconds: 30
+        resources:
+          requests:
+            cpu: 200m
+            memory: 512Mi
+          limits:
+            cpu: 1000m
+            memory: 2Gi
+        volumeMounts:
+        - name: media-storage
+          mountPath: /app/media
+        - name: logs
+          mountPath: /app/logs
+      volumes:
+      - name: media-storage
+        emptyDir: {}
+      - name: logs
+        emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: backend-service
+  namespace: traffic-system
+  labels:
+    app: backend
+    component: api
+spec:
+  type: ClusterIP
+  ports:
+  - port: 8000
+    targetPort: 8000
+    protocol: TCP
+  selector:
+    app: backend
+---
+# ML Service Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ml-service
+  namespace: traffic-system
+  labels:
+    app: ml-service
+    component: inference
+    tier: backend
+spec:
+  replicas: 2
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app: ml-service
+  template:
+    metadata:
+      labels:
+        app: ml-service
+        component: inference
+        tier: backend
+    spec:
+      containers:
+      - name: ml-service
+        image: traffic-system/ml-service:latest
+        ports:
+        - containerPort: 8001
+        env:
+        - name: ENVIRONMENT
+          valueFrom:
+            configMapKeyRef:
+              name: traffic-system-config
+              key: ENVIRONMENT
+        - name: MODEL_PATH
+          value: "/app/models"
+        - name: DEVICE
+          value: "cpu"  # Cambiar a "cuda" si hay GPU disponible
+        - name: BATCH_SIZE
+          value: "4"
+        - name: CONFIDENCE_THRESHOLD
+          value: "0.5"
+        - name: REDIS_URL
+          value: "redis://$(REDIS_HOST):$(REDIS_PORT)/1"
+        - name: REDIS_HOST
+          valueFrom:
+            configMapKeyRef:
+              name: traffic-system-config
+              key: REDIS_HOST
+        - name: REDIS_PORT
+          valueFrom:
+            configMapKeyRef:
+              name: traffic-system-config
+              key: REDIS_PORT
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8001
+          initialDelaySeconds: 60
+          periodSeconds: 15
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8001
+          initialDelaySeconds: 120
+          periodSeconds: 30
+        resources:
+          requests:
+            cpu: 500m
+            memory: 2Gi
+          limits:
+            cpu: 2000m
+            memory: 8Gi
+        volumeMounts:
+        - name: model-storage
+          mountPath: /app/models
+        - name: temp-storage
+          mountPath: /tmp
+      volumes:
+      - name: model-storage
+        persistentVolumeClaim:
+          claimName: ml-models-pvc
+      - name: temp-storage
+        emptyDir:
+          sizeLimit: 5Gi
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: ml-models-pvc
+  namespace: traffic-system
+spec:
+  accessModes:
+    - ReadWriteMany
+  resources:
+    requests:
+      storage: 10Gi
+  storageClassName: standard
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ml-service
+  namespace: traffic-system
+  labels:
+    app: ml-service
+    component: inference
+spec:
+  type: ClusterIP
+  ports:
+  - port: 8001
+    targetPort: 8001
+    protocol: TCP
+  selector:
+    app: ml-service
+---
+# Config Management Service Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: config-service
+  namespace: traffic-system
+  labels:
+    app: config-service
+    component: config
+    tier: backend
+spec:
+  replicas: 2
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app: config-service
+  template:
+    metadata:
+      labels:
+        app: config-service
+        component: config
+        tier: backend
+    spec:
+      containers:
+      - name: config-service
+        image: traffic-system/config-service:latest
+        ports:
+        - containerPort: 8080
+        env:
+        - name: ENVIRONMENT
+          valueFrom:
+            configMapKeyRef:
+              name: traffic-system-config
+              key: ENVIRONMENT
+        - name: DATABASE_URL
+          value: "postgresql://$(DATABASE_USER):$(DATABASE_PASSWORD)@$(DATABASE_HOST):$(DATABASE_PORT)/$(DATABASE_NAME)"
+        - name: DATABASE_HOST
+          valueFrom:
+            configMapKeyRef:
+              name: traffic-system-config
+              key: DATABASE_HOST
+        - name: DATABASE_PORT
+          valueFrom:
+            configMapKeyRef:
+              name: traffic-system-config
+              key: DATABASE_PORT
+        - name: DATABASE_NAME
+          valueFrom:
+            configMapKeyRef:
+              name: traffic-system-config
+              key: DATABASE_NAME
+        - name: DATABASE_USER
+          valueFrom:
+            secretKeyRef:
+              name: traffic-system-secrets
+              key: DATABASE_USER
+        - name: DATABASE_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: traffic-system-secrets
+              key: DATABASE_PASSWORD
+        - name: REDIS_URL
+          value: "redis://$(REDIS_HOST):$(REDIS_PORT)/2"
+        - name: REDIS_HOST
+          valueFrom:
+            configMapKeyRef:
+              name: traffic-system-config
+              key: REDIS_HOST
+        - name: REDIS_PORT
+          valueFrom:
+            configMapKeyRef:
+              name: traffic-system-config
+              key: REDIS_PORT
+        - name: JWT_SECRET_KEY
+          valueFrom:
+            secretKeyRef:
+              name: traffic-system-secrets
+              key: JWT_SECRET_KEY
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 60
+          periodSeconds: 30
+        resources:
+          requests:
+            cpu: 100m
+            memory: 256Mi
+          limits:
+            cpu: 500m
+            memory: 1Gi
+        volumeMounts:
+        - name: config-storage
+          mountPath: /app/config
+      volumes:
+      - name: config-storage
+        persistentVolumeClaim:
+          claimName: config-storage-pvc
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: config-storage-pvc
+  namespace: traffic-system
+spec:
+  accessModes:
+    - ReadWriteMany
+  resources:
+    requests:
+      storage: 1Gi
+  storageClassName: standard
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: config-service
+  namespace: traffic-system
+  labels:
+    app: config-service
+    component: config
+spec:
+  type: ClusterIP
+  ports:
+  - port: 8080
+    targetPort: 8080
+    protocol: TCP
+  selector:
+    app: config-service
+---
+# Frontend Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: frontend
+  namespace: traffic-system
+  labels:
+    app: frontend
+    component: web
+    tier: frontend
+spec:
+  replicas: 3
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 2
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app: frontend
+  template:
+    metadata:
+      labels:
+        app: frontend
+        component: web
+        tier: frontend
+    spec:
+      containers:
+      - name: frontend
+        image: traffic-system/frontend:latest
+        ports:
+        - containerPort: 3000
+        env:
+        - name: NODE_ENV
+          value: "production"
+        - name: REACT_APP_API_URL
+          valueFrom:
+            configMapKeyRef:
+              name: traffic-system-config
+              key: BACKEND_URL
+        - name: REACT_APP_ML_SERVICE_URL
+          valueFrom:
+            configMapKeyRef:
+              name: traffic-system-config
+              key: ML_SERVICE_URL
+        - name: REACT_APP_CONFIG_SERVICE_URL
+          valueFrom:
+            configMapKeyRef:
+              name: traffic-system-config
+              key: CONFIG_SERVICE_URL
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 3000
+          initialDelaySeconds: 15
+          periodSeconds: 5
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 3000
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        resources:
+          requests:
+            cpu: 100m
+            memory: 128Mi
+          limits:
+            cpu: 500m
+            memory: 512Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: frontend-service
+  namespace: traffic-system
+  labels:
+    app: frontend
+    component: web
+spec:
+  type: ClusterIP
+  ports:
+  - port: 3000
+    targetPort: 3000
+    protocol: TCP
+  selector:
+    app: frontend

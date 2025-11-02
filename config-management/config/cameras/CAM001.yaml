@@ -1,0 +1,29 @@
+active: true
+calibration_matrix: null
+camera_id: CAM001
+codec: h264
+detection_zones:
+- name: lane1
+  polygon:
+  - - 100
+    - 200
+  - - 500
+    - 200
+  - - 500
+    - 400
+  - - 100
+    - 400
+distortion_coeffs: null
+fps: 30
+location:
+  lat: -12.0864
+  lon: -77.0365
+name: Av. Javier Prado - San Isidro
+recording_enabled: true
+resolution: 
+- 1920
+- 1080
+retention_days: 30
+rtsp_url: rtsp://admin:password@192.168.1.100:554/stream1
+snapshot_interval: 5
+speed_limit: 60

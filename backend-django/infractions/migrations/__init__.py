@@ -1,0 +1,1 @@
+# Infractions app migrations

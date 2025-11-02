@@ -1,0 +1,435 @@
+# Configuración global
+global:
+  imageRegistry: ""
+  imagePullSecrets: []
+  storageClass: ""
+
+# Configuración de la aplicación
+app:
+  name: traffic-system
+  version: "1.0.0"
+
+# Configuración de imágenes
+images:
+  backend:
+    repository: traffic-system/backend
+    tag: "latest"
+    pullPolicy: IfNotPresent
+  
+  mlService:
+    repository: traffic-system/ml-service
+    tag: "latest"
+    pullPolicy: IfNotPresent
+  
+  configService:
+    repository: traffic-system/config-service
+    tag: "latest"
+    pullPolicy: IfNotPresent
+  
+  frontend:
+    repository: traffic-system/frontend
+    tag: "latest"
+    pullPolicy: IfNotPresent
+
+# Configuración del backend Django
+backend:
+  enabled: true
+  replicaCount: 3
+  
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 10
+    targetCPUUtilizationPercentage: 70
+    targetMemoryUtilizationPercentage: 80
+  
+  resources:
+    limits:
+      cpu: 1000m
+      memory: 1Gi
+    requests:
+      cpu: 500m
+      memory: 512Mi
+  
+  service:
+    type: ClusterIP
+    port: 8000
+    targetPort: 8000
+  
+  env:
+    DEBUG: "false"
+    ALLOWED_HOSTS: "*"
+    DATABASE_URL: ""  # Se completará automáticamente
+    REDIS_URL: ""     # Se completará automáticamente
+    CELERY_BROKER_URL: ""  # Se completará automáticamente
+  
+  livenessProbe:
+    httpGet:
+      path: /health/
+      port: 8000
+    initialDelaySeconds: 30
+    periodSeconds: 10
+  
+  readinessProbe:
+    httpGet:
+      path: /health/
+      port: 8000
+    initialDelaySeconds: 5
+    periodSeconds: 5
+
+# Configuración del servicio ML
+mlService:
+  enabled: true
+  replicaCount: 2
+  
+  autoscaling:
+    enabled: true
+    minReplicas: 1
+    maxReplicas: 5
+    targetCPUUtilizationPercentage: 80
+  
+  resources:
+    limits:
+      cpu: 2000m
+      memory: 4Gi
+    requests:
+      cpu: 1000m
+      memory: 2Gi
+  
+  service:
+    type: ClusterIP
+    port: 8001
+    targetPort: 8001
+  
+  nodeSelector:
+    workload-type: ml
+  
+  tolerations:
+    - key: "workload-type"
+      operator: "Equal"
+      value: "ml"
+      effect: "NoSchedule"
+  
+  env:
+    MODEL_PATH: "/app/models"
+    MAX_WORKERS: "4"
+  
+  livenessProbe:
+    httpGet:
+      path: /health
+      port: 8001
+    initialDelaySeconds: 60
+    periodSeconds: 30
+  
+  readinessProbe:
+    httpGet:
+      path: /health
+      port: 8001
+    initialDelaySeconds: 10
+    periodSeconds: 10
+
+# Configuración del servicio de configuración
+configService:
+  enabled: true
+  replicaCount: 2
+  
+  resources:
+    limits:
+      cpu: 500m
+      memory: 512Mi
+    requests:
+      cpu: 250m
+      memory: 256Mi
+  
+  service:
+    type: ClusterIP
+    port: 8002
+    targetPort: 8002
+  
+  env:
+    CONFIG_STORE_PATH: "/app/config"
+  
+  livenessProbe:
+    httpGet:
+      path: /health
+      port: 8002
+    initialDelaySeconds: 30
+    periodSeconds: 10
+  
+  readinessProbe:
+    httpGet:
+      path: /health
+      port: 8002
+    initialDelaySeconds: 5
+    periodSeconds: 5
+
+# Configuración del frontend
+frontend:
+  enabled: true
+  replicaCount: 2
+  
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 5
+    targetCPUUtilizationPercentage: 70
+  
+  resources:
+    limits:
+      cpu: 500m
+      memory: 512Mi
+    requests:
+      cpu: 100m
+      memory: 128Mi
+  
+  service:
+    type: ClusterIP
+    port: 80
+    targetPort: 80
+
+# Configuración de Celery Workers
+celery:
+  enabled: true
+  
+  worker:
+    replicaCount: 2
+    
+    autoscaling:
+      enabled: true
+      minReplicas: 1
+      maxReplicas: 8
+      targetCPUUtilizationPercentage: 70
+    
+    resources:
+      limits:
+        cpu: 1000m
+        memory: 1Gi
+      requests:
+        cpu: 500m
+        memory: 512Mi
+    
+    env:
+      CELERY_WORKER_CONCURRENCY: "4"
+  
+  beat:
+    enabled: true
+    replicaCount: 1
+    
+    resources:
+      limits:
+        cpu: 200m
+        memory: 256Mi
+      requests:
+        cpu: 100m
+        memory: 128Mi
+
+# Configuración de Ingress
+ingress:
+  enabled: true
+  className: "nginx"
+  
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+  
+  hosts:
+    - host: traffic-system.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+          service: frontend
+        - path: /api/
+          pathType: Prefix
+          service: backend
+        - path: /ml/
+          pathType: Prefix
+          service: ml-service
+        - path: /config/
+          pathType: Prefix
+          service: config-service
+  
+  tls:
+    - secretName: traffic-system-tls
+      hosts:
+        - traffic-system.example.com
+
+# Configuración de PostgreSQL (usando subchart de Bitnami)
+postgresql:
+  enabled: true
+  auth:
+    postgresPassword: "postgres123"
+    username: "trafficuser"
+    password: "traffic123"
+    database: "trafficdb"
+  
+  architecture: standalone
+  
+  primary:
+    persistence:
+      enabled: true
+      size: 20Gi
+    
+    resources:
+      limits:
+        cpu: 1000m
+        memory: 1Gi
+      requests:
+        cpu: 500m
+        memory: 512Mi
+
+# Configuración de Redis (usando subchart de Bitnami)
+redis:
+  enabled: true
+  auth:
+    enabled: true
+    password: "redis123"
+  
+  architecture: standalone
+  
+  master:
+    persistence:
+      enabled: true
+      size: 8Gi
+    
+    resources:
+      limits:
+        cpu: 500m
+        memory: 512Mi
+      requests:
+        cpu: 250m
+        memory: 256Mi
+
+# Configuración de MinIO (usando subchart de Bitnami)
+minio:
+  enabled: true
+  auth:
+    rootUser: "admin"
+    rootPassword: "minio123"
+  
+  persistence:
+    enabled: true
+    size: 50Gi
+  
+  resources:
+    limits:
+      cpu: 500m
+      memory: 512Mi
+    requests:
+      cpu: 250m
+      memory: 256Mi
+
+# Configuración de RabbitMQ (usando subchart de Bitnami)
+rabbitmq:
+  enabled: true
+  auth:
+    username: "user"
+    password: "rabbit123"
+  
+  persistence:
+    enabled: true
+    size: 8Gi
+  
+  resources:
+    limits:
+      cpu: 500m
+      memory: 512Mi
+    requests:
+      cpu: 250m
+      memory: 256Mi
+
+# Configuración de monitoreo
+monitoring:
+  prometheus:
+    enabled: true
+    
+    server:
+      persistentVolume:
+        enabled: true
+        size: 20Gi
+      
+      resources:
+        limits:
+          cpu: 1000m
+          memory: 2Gi
+        requests:
+          cpu: 500m
+          memory: 1Gi
+  
+  grafana:
+    enabled: true
+    
+    persistence:
+      enabled: true
+      size: 10Gi
+    
+    adminPassword: "admin123"
+    
+    resources:
+      limits:
+        cpu: 500m
+        memory: 512Mi
+      requests:
+        cpu: 250m
+        memory: 256Mi
+
+# Configuración de persistencia
+persistence:
+  storageClass: ""  # Usar el storage class por defecto
+  
+  # Volúmenes compartidos
+  sharedStorage:
+    enabled: true
+    size: 100Gi
+    accessMode: ReadWriteMany
+
+# Configuración de seguridad
+security:
+  # Pod Security Standards
+  podSecurityPolicy:
+    enabled: false
+  
+  # Service Account
+  serviceAccount:
+    create: true
+    annotations: {}
+    name: ""
+  
+  # Security Context
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 1000
+    fsGroup: 1000
+
+# Configuración de red
+networking:
+  # Network Policies
+  networkPolicy:
+    enabled: true
+    
+    # Políticas por defecto
+    defaultDeny: true
+    
+    # Permitir tráfico entre componentes
+    allowInternalTraffic: true
+
+# Variables de entorno globales
+env:
+  # Timezone
+  TZ: "UTC"
+  
+  # Logging
+  LOG_LEVEL: "INFO"
+  
+  # Feature flags
+  ENABLE_DEBUG_LOGS: "false"
+  ENABLE_METRICS: "true"
+
+# Configuración de límites de recursos por defecto
+defaultResources:
+  limits:
+    cpu: 1000m
+    memory: 1Gi
+  requests:
+    cpu: 100m
+    memory: 128Mi
