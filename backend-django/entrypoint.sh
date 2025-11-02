@@ -1,27 +1,57 @@
 #!/bin/bash
-set -e
 
-echo "Waiting for PostgreSQL..."
-until pg_isready -h "${POSTGRES_HOST:-postgres}" -p "${POSTGRES_PORT:-5432}" -U "${POSTGRES_USER:-postgres}"; do
-  echo "PostgreSQL is unavailable - sleeping"
-  sleep 1
-done
+# Esperar que PostgreSQL esté disponible
+echo "Esperando que PostgreSQL esté disponible..."
+python -c "
+import psycopg2
+import time
+import os
+while True:
+    try:
+        conn = psycopg2.connect(
+            host='postgres',
+            database=os.environ.get('DB_NAME', 'traffic_system'),
+            user=os.environ.get('DB_USER', 'postgres'),
+            password=os.environ.get('DB_PASSWORD', 'postgres123!')
+        )
+        conn.close()
+        break
+    except:
+        time.sleep(1)
+"
+echo "PostgreSQL está disponible"
 
-echo "PostgreSQL is ready!"
-
-echo "Running migrations..."
+# Ejecutar migraciones
+echo "Ejecutando migraciones de base de datos..."
 python manage.py migrate --noinput
 
-echo "Collecting static files..."
-python manage.py collectstatic --noinput || true
+# Crear superusuario si no existe
+echo "Creando superusuario..."
+python manage.py shell -c "
+from django.contrib.auth import get_user_model
+User = get_user_model()
+if not User.objects.filter(username='admin').exists():
+    User.objects.create_superuser('admin', 'admin@traffic.local', 'admin123')
+    print('Superusuario creado: admin/admin123')
+else:
+    print('Superusuario ya existe')
+"
 
-echo "Starting Gunicorn..."
-exec gunicorn config.wsgi:application \
-    --bind 0.0.0.0:8000 \
-    --workers 4 \
-    --threads 2 \
-    --worker-class gthread \
-    --worker-tmp-dir /dev/shm \
-    --access-logfile - \
-    --error-logfile - \
-    --log-level info
+# Cargar datos de prueba si la base está vacía
+echo "Verificando y cargando datos de prueba..."
+python manage.py shell -c "
+from devices.models import Zone, Device
+if not Zone.objects.exists():
+    exec(open('seed_data.py').read())
+    print('Datos de prueba cargados')
+else:
+    print('Datos de prueba ya existen')
+"
+
+# Recopilar archivos estáticos
+echo "Recopilando archivos estáticos..."
+python manage.py collectstatic --noinput
+
+# Iniciar el servidor
+echo "Iniciando servidor Django..."
+exec python manage.py runserver 0.0.0.0:8000

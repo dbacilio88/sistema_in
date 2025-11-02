@@ -1,146 +1,156 @@
-# Documentación del Sistema de Detección de Infracciones de Tráfico
+# 📚 Documentación del Sistema de Detección de Infracciones de Tráfico
 
-## Índice General
+## 🎯 Nueva Estructura Centralizada
 
-### 📋 Documentación del Proyecto
-- [**README Principal**](../README.md) - Introducción y guía rápida
-- [**Arquitectura del Sistema**](architecture/README.md) - Diseño y componentes
-- [**Plan de Desarrollo**](../specs/plan.md) - Roadmap y sprints
+Toda la documentación del proyecto ha sido reorganizada en una estructura más limpia y centralizada.
 
-### 🛠️ Documentación Técnica
+### 📁 Estructura Actual
 
-#### API y Servicios
-- [**API REST Backend**](api/backend-api.md) - Documentación completa de endpoints
-- [**API ML Service**](api/ml-service-api.md) - Servicios de machine learning
-- [**API Config Service**](api/config-service-api.md) - Gestión de configuración
-- [**WebSocket APIs**](api/websocket-api.md) - Comunicación en tiempo real
-
-#### Arquitectura y Diseño
-- [**Arquitectura General**](architecture/overview.md) - Visión general del sistema
-- [**Arquitectura de Microservicios**](architecture/microservices.md) - Diseño de servicios
-- [**Base de Datos**](architecture/database.md) - Esquema y relaciones
-- [**Seguridad**](architecture/security.md) - Implementación de seguridad
-
-#### Desarrollo
-- [**Guía de Configuración**](development/setup.md) - Configuración del entorno
-- [**Estándares de Código**](development/coding-standards.md) - Convenciones y mejores prácticas
-- [**Testing**](development/testing.md) - Estrategias y frameworks de pruebas
-- [**Debugging**](development/debugging.md) - Herramientas y técnicas
-
-### 🚀 Despliegue y Operaciones
-
-#### Despliegue
-- [**Guía de Despliegue**](../deployment/README.md) - Instrucciones completas
-- [**Docker y Containers**](deployment/docker.md) - Containerización
-- [**Kubernetes**](deployment/kubernetes.md) - Orquestación y manifests
-- [**CI/CD**](deployment/cicd.md) - Pipelines de integración continua
-
-#### Infraestructura
-- [**Terraform**](deployment/terraform.md) - Infrastructure as Code
-- [**Cloud Providers**](deployment/cloud-providers.md) - AWS, Azure, GCP
-- [**Monitoring**](deployment/monitoring.md) - Prometheus, Grafana, logs
-- [**Backup y Recovery**](deployment/backup.md) - Estrategias de respaldo
-
-### 👥 Operaciones y Mantenimiento
-
-#### Administración
-- [**Guía de Administración**](operations/admin-guide.md) - Tareas administrativas
-- [**Runbooks Operacionales**](operations/runbooks.md) - Procedimientos operativos
-- [**Troubleshooting**](operations/troubleshooting.md) - Resolución de problemas
-- [**Performance Tuning**](operations/performance.md) - Optimización
-
-#### Seguridad
-- [**Políticas de Seguridad**](security/policies.md) - Políticas y procedimientos
-- [**Gestión de Usuarios**](security/user-management.md) - Autenticación y autorización
-- [**Auditoría y Logs**](security/audit.md) - Trazabilidad y logs de seguridad
-- [**Incident Response**](security/incident-response.md) - Respuesta a incidentes
-
-### 📚 Manuales de Usuario
-
-#### Usuarios Finales
-- [**Manual de Usuario Web**](user/web-interface.md) - Interfaz web principal
-- [**Manual de Usuario Mobile**](user/mobile-app.md) - Aplicación móvil
-- [**Dashboard de Monitoreo**](user/monitoring-dashboard.md) - Dashboards y métricas
-
-#### Usuarios Técnicos
-- [**CLI Tools**](user/cli-tools.md) - Herramientas de línea de comandos
-- [**Config Management**](user/config-management.md) - Gestión de configuración
-- [**API Usage**](user/api-usage.md) - Uso de APIs
-
-### 🔧 Referencia Técnica
-
-#### Configuración
-- [**Variables de Entorno**](reference/environment-variables.md) - Lista completa
-- [**Archivos de Configuración**](reference/config-files.md) - Formatos y opciones
-- [**Feature Flags**](reference/feature-flags.md) - Flags de funcionalidades
-
-#### APIs
-- [**OpenAPI Specification**](api/openapi.yaml) - Especificación completa
-- [**Postman Collection**](api/postman-collection.json) - Colección de pruebas
-- [**SDK Documentation**](api/sdk.md) - Librerías cliente
-
-### 📊 Análisis y Métricas
-
-#### Métricas del Sistema
-- [**KPIs y Métricas**](metrics/kpis.md) - Indicadores clave
-- [**Dashboards**](metrics/dashboards.md) - Configuración de dashboards
-- [**Alertas**](metrics/alerts.md) - Configuración de alertas
-
-#### Análisis de Performance
-- [**Benchmarks**](performance/benchmarks.md) - Pruebas de rendimiento
-- [**Capacity Planning**](performance/capacity-planning.md) - Planificación de capacidad
-- [**Optimization**](performance/optimization.md) - Técnicas de optimización
-
-### 🎓 Capacitación y Transferencia
-
-#### Material de Entrenamiento
-- [**Onboarding Guide**](training/onboarding.md) - Guía de incorporación
-- [**Workshops**](training/workshops.md) - Talleres técnicos
-- [**Video Tutorials**](training/video-tutorials.md) - Tutoriales en video
-
-#### Knowledge Transfer
-- [**Technical Sessions**](training/technical-sessions.md) - Sesiones técnicas
-- [**Q&A Sessions**](training/qa-sessions.md) - Sesiones de preguntas
-- [**Best Practices**](training/best-practices.md) - Mejores prácticas
-
-## 🔄 Mantenimiento de la Documentación
-
-### Proceso de Actualización
-1. **Revisión Regular**: Documentación revisada cada sprint
-2. **Versionado**: Sincronizado con releases del software
-3. **Feedback**: Canal abierto para mejoras de la documentación
-4. **Automatización**: Generación automática donde sea posible
-
-### Contribuciones
-- Consultar [CONTRIBUTING.md](../CONTRIBUTING.md) para guías de contribución
-- Usar [GitHub Issues](../../issues) para reportar problemas en la documentación
-- Seguir el template de [Pull Request](../.github/pull_request_template.md)
-
-### Estructura de Archivos
 ```
 docs/
-├── api/                    # Documentación de APIs
-├── architecture/           # Arquitectura del sistema
-├── development/           # Guías de desarrollo
-├── deployment/           # Despliegue e infraestructura
-├── operations/           # Operaciones y mantenimiento
-├── security/             # Documentación de seguridad
-├── user/                 # Manuales de usuario
-├── reference/            # Documentación de referencia
-├── metrics/              # Métricas y análisis
-├── performance/          # Performance y optimización
-├── training/             # Material de capacitación
-└── assets/               # Imágenes, diagramas, etc.
+└── centralized/           # 📚 Toda la documentación en un solo lugar
+    ├── DOCUMENTACION_CENTRALIZADA.md    # 📖 Documentación completa unificada
+    ├── README.md                        # 📋 Índice general de documentación
+    │
+    ├── 📋 ARCHIVOS DEL PROYECTO PRINCIPAL:
+    ├── PROGRESS.md                      # 📊 Progreso del proyecto
+    ├── README-LOCAL.md                  # � README local del proyecto
+    ├── IMPLEMENTATION_SUMMARY.md        # 📋 Resumen de implementación
+    ├── QUICKSTART.md                    # � Guía de inicio rápido
+    ├── DEPLOYMENT_STATUS.md             # 🚀 Estado de despliegue
+    ├── SYSTEM_STATUS.md                 # 🔍 Estado actual del sistema
+    ├── CREDENTIALS.md                   # � Credenciales del sistema
+    ├── FRONTEND_SETUP.md                # 🎨 Configuración del frontend
+    │
+    ├── 📦 READMEs DE SERVICIOS:
+    ├── backend-django-README.md         # 📘 README del backend Django
+    ├── frontend-dashboard-README.md     # 📘 README del frontend dashboard
+    ├── inference-service-README.md      # � README del inference service
+    ├── config-management-README.md      # 📘 README del config management
+    ├── optimization-README.md           # 📘 README de optimization
+    ├── deployment-README.md             # 📘 README de deployment
+    │
+    ├── 🛠️ GUÍAS TÉCNICAS:
+    ├── MAKEFILE_GUIDE.md                # � Guía de Makefile
+    ├── VALIDATION_REPORT.md             # 📊 Reporte de validación
+    │
+    ├── 🤖 MACHINE LEARNING:
+    ├── admin-guide.md                   # 👨‍💼 Guía de administración
+    ├── ML_INTEGRATION.md                # 🤖 Integración Machine Learning
+    ├── INTEGRATION_SUMMARY.md           # 📊 Resumen de integración ML
+    ├── OCR_TEMPORARY_DISABLED.md        # ⚠️ Estado temporal de OCR
+    ├── TROUBLESHOOTING_ML.md            # 🤖 Troubleshooting de ML
+    ├── FIX_COMPLETE.md                  # 🔧 Fix completo de permisos YOLOv8/OCR
+    ├── FIX_PERMISSIONS.md               # �️ Fix de permisos aplicado
+    │
+    ├── 🔌 APIs:
+    ├── backend-api.md                   # 🔌 API REST Backend
+    ├── ml-service-api.md                # 🧠 API del servicio ML
+    │
+    ├── 🏗️ ARQUITECTURA:
+    ├── overview.md                      # 🏗️ Visión general de arquitectura
+    ├── DATABASE_SETUP.md                # 🗄️ Configuración de base de datos
+    ├── camera-setup.md                  # 📹 Configuración de cámaras EZVIZ
+    │
+    ├── 📊 MONITOREO Y OPERACIONES:
+    ├── REALTIME_MONITORING.md           # 📊 Monitoreo en tiempo real
+    ├── runbooks.md                      # 📋 Runbooks operacionales
+    ├── troubleshooting.md               # 🔧 Troubleshooting de deployment
+    │
+    ├── 🧪 TESTING:
+    ├── TESTING_GUIDE.md                 # 🧪 Guía de testing y verificación
+    │
+    ├── 👥 ENTRENAMIENTO:
+    ├── best-practices.md                # ✅ Mejores prácticas de desarrollo
+    ├── onboarding.md                    # 🚀 Guía de incorporación
+    ├── knowledge-transfer.md            # 🎓 Transferencia de conocimiento
+    │
+    └── 🌐 USUARIO:
+        └── web-interface.md             # 🌐 Manual de interfaz web
 ```
 
-## 📧 Contacto y Soporte
+## 🔗 Acceso Rápido
 
-- **Equipo de Desarrollo**: dev-team@trafficsystem.com
-- **Soporte Técnico**: support@trafficsystem.com
-- **Documentación**: docs@trafficsystem.com
+### 📖 Documentación Principal
+- **[📚 Documentación Centralizada Completa](centralized/DOCUMENTACION_CENTRALIZADA.md)** - Todo en un solo archivo
+- **[📋 Índice Original](centralized/README.md)** - Índice detallado con enlaces
+
+### 🏗️ Arquitectura y Diseño
+- **[🏗️ Visión General](centralized/overview.md)** - Arquitectura del sistema
+- **[🗄️ Base de Datos](centralized/DATABASE_SETUP.md)** - Configuración PostgreSQL
+
+### 🤖 Machine Learning
+- **[🤖 Integración ML](centralized/ML_INTEGRATION.md)** - YOLOv8 y EasyOCR
+- **[📊 Resumen de Integración](centralized/INTEGRATION_SUMMARY.md)** - Cambios completados
+- **[⚠️ Estado OCR](centralized/OCR_TEMPORARY_DISABLED.md)** - Estado temporal
+
+### 🔌 APIs y Servicios
+- **[🔌 Backend API](centralized/backend-api.md)** - Documentación REST API
+- **[🧠 ML Service API](centralized/ml-service-api.md)** - API de inferencia
+
+### 📊 Monitoreo y Operaciones
+- **[📊 Monitoreo Tiempo Real](centralized/REALTIME_MONITORING.md)** - Dashboard en vivo
+- **[👨‍💼 Guía Admin](centralized/admin-guide.md)** - Administración del sistema
+- **[📋 Runbooks](centralized/runbooks.md)** - Procedimientos operacionales
+
+### 🔧 Troubleshooting
+- **[🔧 Troubleshooting Deployment](centralized/troubleshooting.md)** - Problemas de despliegue
+- **[🤖 Troubleshooting ML](centralized/TROUBLESHOOTING_ML.md)** - Problemas de ML
+- **[🛠️ Fix Permisos](centralized/FIX_COMPLETE.md)** - Soluciones aplicadas
+
+### 🧪 Testing y Verificación
+- **[🧪 Guía de Testing](centralized/TESTING_GUIDE.md)** - Verificación del sistema
+
+### 📹 Configuración Hardware
+- **[📹 Setup Cámaras](centralized/camera-setup.md)** - EZVIZ H6C Pro 2K
+
+### 👥 Entrenamiento y Mejores Prácticas
+- **[✅ Mejores Prácticas](centralized/best-practices.md)** - Estándares de desarrollo
+- **[🚀 Onboarding](centralized/onboarding.md)** - Incorporación al equipo
+- **[🎓 Knowledge Transfer](centralized/knowledge-transfer.md)** - Transferencia de conocimiento
+
+### 🌐 Manual de Usuario
+- **[🌐 Interfaz Web](centralized/web-interface.md)** - Manual de usuario
+
+## 🎯 Beneficios de la Nueva Estructura
+
+### ✅ Ventajas
+1. **📁 Organización Simplificada**: Un solo directorio con toda la documentación
+2. **🔍 Fácil Búsqueda**: Todos los archivos en el mismo nivel
+3. **📝 Mantenimiento Eficiente**: Actualizaciones más fáciles
+4. **🚀 Acceso Rápido**: No hay que navegar por subdirectorios
+5. **📚 Documentación Unificada**: Todo centralizado en un archivo principal
+
+### 🎨 Código Más Limpio
+- ❌ **Antes**: 6 subcarpetas + archivos dispersos por todo el proyecto
+- ✅ **Ahora**: 1 carpeta centralizada con 40 archivos organizados
+
+## 📱 Acceso desde VS Code
+
+```bash
+# Navegar a documentación
+cd docs/centralized
+
+# Ver todos los archivos
+ls -la
+
+# Abrir documentación principal
+code DOCUMENTACION_CENTRALIZADA.md
+```
+
+## 🔄 Migración Completada
+
+- ✅ **40 archivos markdown** movidos exitosamente desde:
+  - ✅ Carpeta `docs/` y subcarpetas (22 archivos)
+  - ✅ Raíz del proyecto (8 archivos)
+  - ✅ Carpetas de servicios (8 archivos README específicos)
+  - ✅ Carpeta `ml-service/docs/` (2 archivos)
+- ✅ **6 carpetas vacías** eliminadas de docs/
+- ✅ **Estructura limpia** implementada
+- ✅ **Documentación centralizada** creada
+- ✅ **Código más organizado** y mantenible
 
 ---
 
-**Última actualización**: Fecha de último commit  
-**Versión de la documentación**: v1.0  
-**Versión del sistema**: v1.0.0
+**Última actualización:** 2 de Noviembre, 2025  
+**Mantenido por:** Sistema de Detección de Infracciones de Tráfico

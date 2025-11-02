@@ -8,7 +8,7 @@ import { AnalyticsCharts } from '@/components/AnalyticsCharts';
 import { DashboardHeader } from '@/components/DashboardHeader';
 import { Sidebar } from '@/components/Sidebar';
 import { Settings } from '@/components/Settings';
-import { RealtimeMonitor } from '@/components/RealtimeMonitor';
+import { RealtimeMonitor } from '@/components/RealtimeMonitorView';
 
 export default function Dashboard() {
   const [activeTab, setActiveTab] = useState('overview');
