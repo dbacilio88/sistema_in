@@ -34,6 +34,11 @@ export function LocalWebcamDetection({
   const [permissionDenied, setPermissionDenied] = useState(false);
   const [processingFps, setProcessingFps] = useState(0);
   
+  // Infraction config
+  const [simulateInfractions, setSimulateInfractions] = useState(true);
+  const [speedLimit, setSpeedLimit] = useState(60);
+  const [enableOCR, setEnableOCR] = useState(false);
+  
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const wsRef = useRef<WebSocket | null>(null);
@@ -47,6 +52,7 @@ export function LocalWebcamDetection({
   const processedCountRef = useRef(0);
   const lastProcessTimeRef = useRef(Date.now());
   const isStreamingRef = useRef(false);
+  const pingIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   // Get color scheme for detections
   const getDetectionColor = (detection: Detection) => {
@@ -196,10 +202,11 @@ export function LocalWebcamDetection({
         type: 'frame',
         image: base64Data,
         config: {
-          confidence_threshold: 0.7,
-          enable_ocr: false, // Disable OCR for speed
-          enable_speed: false,
-          infractions: [],
+          confidence_threshold: 0.5,
+          enable_ocr: enableOCR,
+          simulate_infractions: simulateInfractions,
+          infractions: simulateInfractions ? ['speeding'] : [],
+          speed_limit: speedLimit,
           process_interval: 1
         }
       });
@@ -220,50 +227,18 @@ export function LocalWebcamDetection({
       console.error('❌ Error sending frame:', err);
       processingFrameRef.current = false;
     }
-  }, []);
+  }, [simulateInfractions, speedLimit, enableOCR]); // Add dependencies for config
 
-  // Continuous rendering loop (runs at full FPS)
+  // Continuous rendering loop (runs at full FPS) - NOW ONLY FOR FPS COUNTING
   const renderLoop = useCallback(() => {
-    console.log('🔄 renderLoop called, isStreamingRef:', isStreamingRef.current);
-    
-    if (!videoRef.current || !canvasRef.current || !isStreamingRef.current) {
-      console.log('❌ renderLoop stopped:', {
-        hasVideo: !!videoRef.current,
-        hasCanvas: !!canvasRef.current,
-        streaming: isStreamingRef.current
-      });
+    // Critical check: ensure we should still be running
+    if (!isStreamingRef.current) {
+      console.log('⏸️ renderLoop: streaming stopped');
       return;
     }
-
-    const canvas = canvasRef.current;
-    const video = videoRef.current;
-    const ctx = canvas.getContext('2d');
     
-    if (!ctx) return;
-
-    // Check if video is actually playing
-    if (video.readyState < 2) {
-      // Video not ready yet, try again
-      if (streaming) {
-        animationFrameRef.current = requestAnimationFrame(renderLoop);
-      }
-      return;
-    }
-
-    // Set canvas size to match video
-    if (canvas.width !== video.videoWidth || canvas.height !== video.videoHeight) {
-      canvas.width = video.videoWidth;
-      canvas.height = video.videoHeight;
-      console.log('📐 Canvas size set to:', canvas.width, 'x', canvas.height);
-    }
-    
-    // Draw video frame to canvas
-    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-    
-    // Draw last known detections
-    if (lastDetectionsRef.current.length > 0) {
-      drawDetections(ctx, lastDetectionsRef.current);
-    }
+    // NOTE: Frame drawing is now done in ws.onmessage (backend sends processed frames)
+    // This loop just counts FPS and sends frames to backend
     
     // Update display FPS
     frameCountRef.current++;
@@ -282,10 +257,17 @@ export function LocalWebcamDetection({
     if (isStreamingRef.current) {
       animationFrameRef.current = requestAnimationFrame(renderLoop);
     }
-  }, [drawDetections, sendFrameToInference]);
+  }, [sendFrameToInference]);
 
   // Start webcam
   const startWebcam = async () => {
+    // Prevent multiple connections
+    if (isStreamingRef.current || wsRef.current) {
+      console.log('⚠️ Already streaming, ignoring start request');
+      return;
+    }
+    
+    console.log('🎬 Starting webcam...');
     setLoading(true);
     setError(false);
     setPermissionDenied(false);
@@ -302,12 +284,46 @@ export function LocalWebcamDetection({
 
       streamRef.current = stream;
 
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        await videoRef.current.play();
+      // CRITICAL: Wait for video element to be ready BEFORE starting WebSocket
+      if (!videoRef.current) {
+        console.error('❌ Video ref not available');
+        throw new Error('Video element not found');
       }
 
-      // Connect to inference WebSocket
+      const video = videoRef.current;
+      video.srcObject = stream;
+      
+      // Wait for video to be ready
+      await new Promise<void>((resolve, reject) => {
+        const timeout = setTimeout(() => {
+          reject(new Error('Video load timeout'));
+        }, 5000);
+
+        video.onloadedmetadata = () => {
+          clearTimeout(timeout);
+          console.log('✅ Video metadata loaded:', video.videoWidth, 'x', video.videoHeight);
+          resolve();
+        };
+
+        video.onerror = (err) => {
+          clearTimeout(timeout);
+          reject(err);
+        };
+      });
+
+      // Play video
+      await video.play();
+      console.log('▶️ Video playing');
+
+      // CRITICAL: Verify canvas ref is also available
+      if (!canvasRef.current) {
+        console.error('❌ Canvas ref not available');
+        throw new Error('Canvas element not found');
+      }
+
+      console.log('✅ Both refs ready - video:', !!videoRef.current, 'canvas:', !!canvasRef.current);
+
+      // NOW connect to inference WebSocket
       const inferenceWsUrl = process.env.NEXT_PUBLIC_INFERENCE_WS || 'ws://localhost:8001';
       const wsUrl = `${inferenceWsUrl}/api/ws/inference`;
       
@@ -319,44 +335,60 @@ export function LocalWebcamDetection({
       ws.onopen = () => {
         console.log('✅ WebSocket connected for local webcam');
         
-        // Send initial config message to keep connection alive
+        // Send config with infraction detection enabled
         try {
-          ws.send(JSON.stringify({
+          const config = {
             type: 'config',
             data: {
-              confidence_threshold: 0.7,
-              enable_ocr: false,
-              enable_speed: false
+              confidence_threshold: 0.5,
+              enable_ocr: enableOCR,
+              simulate_infractions: simulateInfractions,
+              infractions: ['speeding'],
+              speed_limit: speedLimit
             }
-          }));
-          console.log('📤 Sent initial config');
+          };
+          ws.send(JSON.stringify(config));
+          console.log('📤 Sent config:', config);
         } catch (err) {
           console.error('❌ Error sending initial config:', err);
         }
         
+        // Set streaming flag and start render loop
         isStreamingRef.current = true;
         setStreaming(true);
         setLoading(false);
         
+        // START RENDER LOOP NOW (after refs are confirmed ready)
+        console.log('🎨 Starting render loop...');
+        renderLoop();
+        
+        // Clear any existing ping interval
+        if (pingIntervalRef.current) {
+          clearInterval(pingIntervalRef.current);
+        }
+        
         // Send ping to keep connection alive
-        const pingInterval = setInterval(() => {
+        pingIntervalRef.current = setInterval(() => {
           if (ws.readyState === WebSocket.OPEN) {
             try {
               ws.send(JSON.stringify({ type: 'ping' }));
               console.log('💓 Ping sent');
             } catch (err) {
               console.error('❌ Error sending ping:', err);
-              clearInterval(pingInterval);
+              if (pingIntervalRef.current) {
+                clearInterval(pingIntervalRef.current);
+                pingIntervalRef.current = null;
+              }
             }
           } else {
-            clearInterval(pingInterval);
+            if (pingIntervalRef.current) {
+              clearInterval(pingIntervalRef.current);
+              pingIntervalRef.current = null;
+            }
           }
         }, 5000); // Ping every 5 seconds
         
-        // Start rendering loop after a short delay to ensure connection is stable
-        setTimeout(() => {
-          renderLoop();
-        }, 100);
+        // Render loop already started above - no need to start again
       };
 
       ws.onmessage = (event) => {
@@ -366,7 +398,8 @@ export function LocalWebcamDetection({
           console.log('📥 Received from server:', {
             type: data.type,
             hasDetections: !!data.detections,
-            detectionCount: data.detections?.length || 0
+            detectionCount: data.detections?.length || 0,
+            hasFrame: !!data.frame
           });
           
           // Handle pong response
@@ -374,24 +407,31 @@ export function LocalWebcamDetection({
             return;
           }
           
-          // Store detections for rendering
-          if (data.detections) {
-            // Scale detections back to full resolution
-            const scaledDetections = data.detections.map((det: Detection) => ({
-              ...det,
-              bbox: {
-                x: det.bbox.x * 2, // Scale back from 50%
-                y: det.bbox.y * 2,
-                width: det.bbox.width * 2,
-                height: det.bbox.height * 2
-              }
-            }));
+          // CRITICAL: Display the processed frame from backend (has boxes drawn)
+          if (data.frame && canvasRef.current) {
+            const canvas = canvasRef.current;
+            const ctx = canvas.getContext('2d');
             
-            lastDetectionsRef.current = scaledDetections;
-            setDetectionCount(scaledDetections.length);
-            processingFrameRef.current = false; // Allow next frame to be processed
+            if (ctx) {
+              // Create image from base64
+              const img = new Image();
+              img.onload = () => {
+                // Set canvas size to match image
+                canvas.width = img.width;
+                canvas.height = img.height;
+                // Draw processed frame (with boxes already drawn by backend)
+                ctx.drawImage(img, 0, 0);
+                console.log('🎨 Drew processed frame on canvas:', img.width, 'x', img.height);
+              };
+              img.src = `data:image/jpeg;base64,${data.frame}`;
+            }
+          }
+          
+          // Store detections for stats
+          if (data.detections) {
+            setDetectionCount(data.detections.length);
+            processingFrameRef.current = false;
           } else {
-            // No detections, still mark as processed
             processingFrameRef.current = false;
           }
         } catch (err) {
@@ -454,6 +494,8 @@ export function LocalWebcamDetection({
 
   // Stop webcam
   const stopWebcam = () => {
+    console.log('🛑 Stopping webcam...');
+    
     // Stop streaming flag
     isStreamingRef.current = false;
     
@@ -461,6 +503,12 @@ export function LocalWebcamDetection({
     if (animationFrameRef.current) {
       cancelAnimationFrame(animationFrameRef.current);
       animationFrameRef.current = null;
+    }
+
+    // Clear ping interval
+    if (pingIntervalRef.current) {
+      clearInterval(pingIntervalRef.current);
+      pingIntervalRef.current = null;
     }
 
     // Close WebSocket
@@ -485,12 +533,54 @@ export function LocalWebcamDetection({
     setFps(0);
   };
 
-  // Cleanup on unmount
+  // Cleanup on unmount - properly stop everything
   useEffect(() => {
+    console.log('🎬 Component mounted');
+    
     return () => {
-      stopWebcam();
+      console.log('🛑 Component unmounting - stopping all processes');
+      // Immediately stop streaming flag to prevent renderLoop from continuing
+      isStreamingRef.current = false;
+      
+      // Cancel animation frame
+      if (animationFrameRef.current) {
+        cancelAnimationFrame(animationFrameRef.current);
+        animationFrameRef.current = null;
+      }
+      
+      // Clear intervals
+      if (pingIntervalRef.current) {
+        clearInterval(pingIntervalRef.current);
+        pingIntervalRef.current = null;
+      }
+      
+      // Close WebSocket
+      if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+        wsRef.current.close();
+        wsRef.current = null;
+      }
+      
+      // Stop media stream
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach(track => track.stop());
+        streamRef.current = null;
+      }
     };
   }, []);
+  
+  // Cleanup on page unload
+  useEffect(() => {
+    const handleBeforeUnload = () => {
+      console.log('🚪 Page unloading - cleaning up immediately');
+      stopWebcam();
+    };
+    
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+    };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const openFullscreen = () => {
     if (canvasRef.current) {
@@ -555,11 +645,75 @@ export function LocalWebcamDetection({
             ) : (
               <>
                 <VideoCameraIcon className="h-12 w-12 mx-auto text-gray-400 mb-3" />
+                
+                {/* Infraction Configuration */}
+                <div className="bg-gray-800 rounded-md p-4 mb-4 text-left max-w-md mx-auto">
+                  <h3 className="text-white text-sm font-semibold mb-3">⚙️ Configuración de Detección</h3>
+                  
+                  <div className="space-y-3">
+                    {/* Simulate Infractions Toggle */}
+                    <div className="flex items-center justify-between">
+                      <label className="text-gray-300 text-xs">Simular Infracciones</label>
+                      <button
+                        onClick={() => setSimulateInfractions(!simulateInfractions)}
+                        className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                          simulateInfractions ? 'bg-blue-600' : 'bg-gray-600'
+                        }`}
+                      >
+                        <span
+                          className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                            simulateInfractions ? 'translate-x-6' : 'translate-x-1'
+                          }`}
+                        />
+                      </button>
+                    </div>
+
+                    {/* Speed Limit */}
+                    <div className="flex items-center justify-between">
+                      <label className="text-gray-300 text-xs">Límite Velocidad (km/h)</label>
+                      <input
+                        type="number"
+                        value={speedLimit}
+                        onChange={(e) => setSpeedLimit(Number(e.target.value))}
+                        className="bg-gray-700 text-white text-xs px-2 py-1 rounded w-16 text-center"
+                        min="30"
+                        max="120"
+                      />
+                    </div>
+
+                    {/* Enable OCR */}
+                    <div className="flex items-center justify-between">
+                      <label className="text-gray-300 text-xs">Detectar Placas (OCR)</label>
+                      <button
+                        onClick={() => setEnableOCR(!enableOCR)}
+                        className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                          enableOCR ? 'bg-blue-600' : 'bg-gray-600'
+                        }`}
+                      >
+                        <span
+                          className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                            enableOCR ? 'translate-x-6' : 'translate-x-1'
+                          }`}
+                        />
+                      </button>
+                    </div>
+
+                    {/* Info */}
+                    <div className="bg-blue-900 bg-opacity-30 border border-blue-700 rounded p-2 mt-3">
+                      <p className="text-blue-300 text-xs">
+                        {simulateInfractions 
+                          ? '🎲 Los vehículos detectados tendrán 33% de probabilidad de cometer infracciones de velocidad'
+                          : '📊 Solo se detectarán vehículos sin simular infracciones'}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
                 <button
                   onClick={startWebcam}
-                  className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md text-sm"
+                  className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-md text-sm font-semibold"
                 >
-                  Iniciar Webcam
+                  🎥 Iniciar Detección
                 </button>
               </>
             )}
@@ -601,6 +755,15 @@ export function LocalWebcamDetection({
               <span>Detecciones:</span>
               <span className="font-mono font-bold">{detectionCount}</span>
             </div>
+            {simulateInfractions && (
+              <div className="border-t border-gray-600 pt-1 mt-1">
+                <div className="flex items-center gap-1">
+                  <span>🚨</span>
+                  <span className="text-yellow-400 text-[10px]">Simulación Activa</span>
+                </div>
+                <div className="text-[10px] text-gray-400">Límite: {speedLimit} km/h</div>
+              </div>
+            )}
           </div>
 
           {/* Fullscreen button */}

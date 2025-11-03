@@ -1,6 +1,7 @@
 from django.contrib import admin
 from django.utils.html import format_html
 from .models import Infraction, InfractionEvent, Appeal
+from .models_detection import VehicleDetection, DetectionStatistics
 
 
 @admin.register(Infraction)
@@ -129,3 +130,30 @@ class AppealAdmin(admin.ModelAdmin):
             'classes': ['collapse']
         })
     )
+
+
+@admin.register(VehicleDetection)
+class VehicleDetectionAdmin(admin.ModelAdmin):
+    list_display = [
+        'vehicle_type', 'confidence', 'license_plate_detected',
+        'has_infraction', 'device', 'source', 'detected_at'
+    ]
+    list_filter = [
+        'vehicle_type', 'has_infraction', 'source', 'device', 'detected_at'
+    ]
+    search_fields = ['license_plate_detected', 'vehicle__license_plate']
+    readonly_fields = ['id', 'created_at', 'bbox_area']
+    date_hierarchy = 'detected_at'
+    ordering = ['-detected_at']
+
+
+@admin.register(DetectionStatistics)
+class DetectionStatisticsAdmin(admin.ModelAdmin):
+    list_display = [
+        'period_type', 'period_start', 'device', 'zone',
+        'total_detections', 'total_infractions', 'avg_confidence'
+    ]
+    list_filter = ['period_type', 'device', 'zone', 'period_start']
+    readonly_fields = ['id', 'created_at', 'updated_at']
+    date_hierarchy = 'period_start'
+    ordering = ['-period_start']

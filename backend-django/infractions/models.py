@@ -204,3 +204,7 @@ class Appeal(models.Model):
     
     def __str__(self):
         return f"Appeal for {self.infraction.infraction_code}"
+
+
+# Import detection models
+from .models_detection import VehicleDetection, DetectionStatistics

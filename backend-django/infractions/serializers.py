@@ -109,30 +109,36 @@ class InfractionCreateSerializer(serializers.ModelSerializer):
     
     def validate(self, attrs):
         """Validate and set defaults for device and zone if not provided"""
-        # If no device provided, try to get a default one
-        if not attrs.get('device'):
-            default_device = Device.objects.filter(is_active=True).first()
-            if default_device:
-                attrs['device'] = default_device.id
-        
-        # If no zone provided, try to get from device or use default
-        if not attrs.get('zone'):
-            if attrs.get('device'):
-                device = Device.objects.get(id=attrs['device'])
-                attrs['zone'] = device.zone.id
-            else:
-                default_zone = Zone.objects.filter(is_active=True).first()
-                if default_zone:
-                    attrs['zone'] = default_zone.id
-        
+        # CRITICAL: Don't set device/zone here - they are handled by to_internal_value
+        # Just validate that we have them or will get defaults in create()
         return attrs
     
     def create(self, validated_data):
         """Create infraction with auto-generated code"""
-        # Generate unique infraction code
+        # Generate unique infraction code (max 20 chars)
         from datetime import datetime
-        timestamp = datetime.now().strftime('%Y%m%d%H%M%S')
+        import random
+        # Use shorter timestamp: HHMMSS + random 2 digits
+        timestamp = datetime.now().strftime('%H%M%S')
+        random_suffix = random.randint(10, 99)
         infraction_type_code = validated_data['infraction_type'][:3].upper()
-        validated_data['infraction_code'] = f"INF-{infraction_type_code}-{timestamp}"
+        # Format: INF-SPE-142530-45 = 17 chars (within 20 limit)
+        validated_data['infraction_code'] = f"INF-{infraction_type_code}-{timestamp}-{random_suffix}"
+        
+        # CRITICAL: Set default device and zone if not provided
+        if 'device' not in validated_data or validated_data['device'] is None:
+            default_device = Device.objects.filter(is_active=True).first()
+            if default_device:
+                validated_data['device'] = default_device
+        
+        if 'zone' not in validated_data or validated_data['zone'] is None:
+            if validated_data.get('device'):
+                # Use device's zone
+                validated_data['zone'] = validated_data['device'].zone
+            else:
+                # Fallback to default zone
+                default_zone = Zone.objects.filter(is_active=True).first()
+                if default_zone:
+                    validated_data['zone'] = default_zone
         
         return super().create(validated_data)

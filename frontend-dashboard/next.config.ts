@@ -3,6 +3,7 @@ import type { NextConfig } from "next";
 const nextConfig: NextConfig = {
   /* config options here */
   output: 'standalone',
+  reactStrictMode: false, // Disable to prevent double mounting in dev mode
   
   // Environment variables available to the client
   env: {

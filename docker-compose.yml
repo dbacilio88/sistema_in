@@ -173,6 +173,7 @@ services:
       MINIO_ENDPOINT: minio:9000
       MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-admin}
       MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-SecurePassword123!}
+      DJANGO_API_URL: http://django:8000
       INFERENCE_DEVICE: ${INFERENCE_DEVICE:-cpu}
       GPU_DEVICE_ID: ${GPU_DEVICE_ID:-0}
     ports:

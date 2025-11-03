@@ -138,43 +138,53 @@ class ModelService:
             detections = []
             
             # YOLO vehicle classes (COCO dataset)
+            # NOTA: Para pruebas, también detectamos personas (class=0)
             vehicle_classes = {
-                2: 'car',
-                3: 'motorcycle', 
-                5: 'bus',
-                7: 'truck'
+                0: 'person',      # 👤 Para pruebas y peatones
+                1: 'bicycle',     # 🚲 Bicicletas
+                2: 'car',         # 🚗 Autos
+                3: 'motorcycle',  # 🏍️ Motos
+                5: 'bus',         # 🚌 Buses
+                7: 'truck'        # 🚚 Camiones
             }
             
             # Process results
             for result in results:
                 boxes = result.boxes
-                logger.info(f"YOLO detected {len(boxes)} objects total")
+                logger.info(f"🔍 YOLO detected {len(boxes)} objects total")
                 
                 vehicle_count = 0
-                for box in boxes:
+                for idx, box in enumerate(boxes):
                     cls = int(box.cls[0])
                     conf = float(box.conf[0])
-                    logger.debug(f"Detected object: class={cls}, confidence={conf:.2f}")
+                    
+                    # Log cada objeto detectado
+                    logger.info(f"📦 Object #{idx+1}: class={cls}, confidence={conf:.2f}")
                     
                     # Only process vehicle classes
                     if cls in vehicle_classes:
                         vehicle_count += 1
                         xyxy = box.xyxy[0].cpu().numpy()
                         
+                        # Formato correcto: [x1, y1, x2, y2]
+                        bbox = [float(xyxy[0]), float(xyxy[1]), float(xyxy[2]), float(xyxy[3])]
+                        
                         detection = {
                             'type': 'vehicle',
                             'vehicle_type': vehicle_classes[cls],
                             'confidence': conf,
-                            'bbox': {
-                                'x': int(xyxy[0]),
-                                'y': int(xyxy[1]),
-                                'width': int(xyxy[2] - xyxy[0]),
-                                'height': int(xyxy[3] - xyxy[1])
-                            }
+                            'bbox': bbox  # [x1, y1, x2, y2]
                         }
                         detections.append(detection)
+                        
+                        logger.info(
+                            f"✅ Vehicle detected: {vehicle_classes[cls]} "
+                            f"(conf={conf:.2f}, bbox={bbox})"
+                        )
+                    else:
+                        logger.debug(f"⏭️  Skipping non-vehicle class: {cls}")
                 
-                logger.info(f"Filtered to {vehicle_count} vehicles from {len(boxes)} objects")
+                logger.info(f"🚗 Filtered to {vehicle_count} vehicles from {len(boxes)} objects")
             
             return detections
             
