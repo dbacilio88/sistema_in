@@ -1,8 +1,9 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { VideoCameraIcon, CameraIcon, ExclamationTriangleIcon, PlayIcon, StopIcon } from '@heroicons/react/24/outline';
-import { VideoPlayer } from './VideoPlayer';
+import { VideoCameraIcon, CameraIcon, ExclamationTriangleIcon, PlayIcon, StopIcon, ComputerDesktopIcon } from '@heroicons/react/24/outline';
+import { VideoPlayerWithDetection } from './VideoPlayerWithDetection';
+import { LocalWebcamDetection } from './LocalWebcamDetection';
 import { MultiStreamView } from './MultiStreamView';
 import { useCameraStreams } from '@/hooks/useCameraStreams';
 
@@ -81,8 +82,34 @@ export function RealtimeMonitor() {
         <h1 className="text-2xl font-bold text-gray-900">Monitoreo en Tiempo Real</h1>
       </div>
 
+      {/* Local Webcam Section */}
+      <div className="bg-white p-6 rounded-lg border">
+        <div className="flex items-center gap-3 mb-4">
+          <ComputerDesktopIcon className="h-6 w-6 text-purple-600" />
+          <h2 className="text-xl font-semibold text-gray-900">Webcam Local</h2>
+          <span className="text-sm text-gray-500">Detecta vehículos usando tu cámara web</span>
+        </div>
+        
+        <div className="aspect-video max-w-2xl mx-auto">
+          <LocalWebcamDetection className="w-full h-full" />
+        </div>
+        
+        <div className="mt-4 p-3 bg-purple-50 rounded-md">
+          <p className="text-sm text-purple-800">
+            💡 <strong>Tip:</strong> La webcam local procesa el video directamente en tu navegador y envía los frames 
+            al servicio de detección. Funciona mejor con buena iluminación y cámaras de alta calidad.
+          </p>
+        </div>
+      </div>
+
       {/* Controls */}
       <div className="bg-white p-6 rounded-lg border">
+        <div className="flex items-center gap-3 mb-6">
+          <CameraIcon className="h-6 w-6 text-blue-600" />
+          <h2 className="text-xl font-semibold text-gray-900">Cámaras del Sistema</h2>
+          <span className="text-sm text-gray-500">Monitorea las cámaras instaladas en las diferentes zonas</span>
+        </div>
+        
         {/* Statistics Panel */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
           <div className="bg-blue-50 p-3 rounded-lg">
@@ -227,8 +254,8 @@ export function RealtimeMonitor() {
                 {/* Stream Display */}
                 <div className="aspect-video mb-3">
                   {isStreaming && streamData ? (
-                    <VideoPlayer
-                      streamUrl={streamData.streamUrl}
+                    <VideoPlayerWithDetection
+                      deviceId={device.id}
                       deviceName={device.name}
                       className="aspect-video"
                       onError={() => {

@@ -221,11 +221,16 @@ class RealtimeDetector:
                 if len(self.processed_infractions) > 1000:
                     self.processed_infractions = set(list(self.processed_infractions)[-500:])
             
+            # Encode frame to base64 to send back to client
+            _, buffer = cv2.imencode('.jpg', frame)
+            frame_base64 = base64.b64encode(buffer).decode('utf-8')
+            
             return {
+                "frame": frame_base64,
                 "detections": detections,
                 "infractions_registered": len(infractions_detected),
                 "fps": 30.0,
-                "frame_count": self.frame_count,
+                "frame_number": self.frame_count,
                 "timestamp": datetime.now().isoformat()
             }
             
