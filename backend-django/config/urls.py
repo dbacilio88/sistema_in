@@ -15,6 +15,7 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from django.shortcuts import redirect
+from django.http import JsonResponse
 
 
 @api_view(['GET'])
@@ -30,14 +31,51 @@ def health_check(request):
     }, status=status.HTTP_200_OK)
 
 
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def api_root(request):
+    """
+    API root endpoint showing available endpoints and database stats
+    """
+    from devices.models import Zone, Device
+    from vehicles.models import Vehicle
+    from infractions.models import Infraction
+    from django.contrib.auth.models import User
+    
+    return Response({
+        'message': 'Traffic Infraction Detection System API',
+        'version': '1.0.0',
+        'database_stats': {
+            'users': User.objects.count(),
+            'zones': Zone.objects.count(),
+            'devices': Device.objects.count(),
+            'vehicles': Vehicle.objects.count(),
+            'infractions': Infraction.objects.count(),
+        },
+        'endpoints': {
+            'admin': '/admin/',
+            'api_docs': '/api/docs/',
+            'devices': '/api/devices/',
+            'zones': '/api/devices/zones/',
+            'infractions': '/api/infractions/',
+            'vehicles': '/api/vehicles/',
+            'notifications': '/api/notifications/',
+            'auth': '/api/auth/',
+        }
+    })
+
+
 def root_view(request):
-    """Redirect root to admin or API docs"""
-    return redirect('/admin/')
+    """Redirect root to API overview"""
+    return redirect('/api/')
 
 
 urlpatterns = [
     # Root
     path('', root_view, name='root'),
+    
+    # API Root
+    path('api/', api_root, name='api-root'),
     
     # Admin
     path('admin/', admin.site.urls),
