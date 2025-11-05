@@ -10,16 +10,20 @@ import asyncio
 from concurrent.futures import ThreadPoolExecutor
 
 from app.core import get_logger, settings
+from app.services.traffic_light_detector import SimpleTrafficLightDetector
+from app.services.lane_detector import SimpleLaneDetector
 
 logger = get_logger(__name__)
 
 
 class ModelService:
-    """Service for managing ML models (YOLO, OCR)"""
+    """Service for managing ML models (YOLO, OCR, Traffic Light, Lane Detection)"""
     
     def __init__(self):
         self.yolo_model = None
         self.ocr_reader = None
+        self.traffic_light_detector = None
+        self.lane_detector = None
         self.executor = ThreadPoolExecutor(max_workers=2)
         self._initialized = False
         
@@ -49,8 +53,30 @@ class ModelService:
                 logger.warning("Continuing without OCR support")
                 self.ocr_reader = None
             
+            # Initialize traffic light detector (lightweight, no ML model needed)
+            try:
+                # Pass YOLO model to traffic light detector for object detection
+                self.traffic_light_detector = SimpleTrafficLightDetector(
+                    yolo_model=self.yolo_model,
+                    confidence_threshold=0.5
+                )
+                logger.info("✅ Traffic light detector initialized with YOLO support")
+            except Exception as tl_error:
+                logger.warning(f"Failed to initialize traffic light detector: {str(tl_error)}")
+                self.traffic_light_detector = None
+            
+            # Initialize lane detector (lightweight, uses Hough Transform)
+            try:
+                self.lane_detector = SimpleLaneDetector(
+                    confidence_threshold=0.6
+                )
+                logger.info("✅ Lane detector initialized")
+            except Exception as lane_error:
+                logger.warning(f"Failed to initialize lane detector: {str(lane_error)}")
+                self.lane_detector = None
+            
             self._initialized = True
-            logger.info("ML models initialized successfully (YOLO ready)")
+            logger.info("ML models initialized successfully (YOLO + Traffic Light + Lane Detection ready)")
             
         except Exception as e:
             logger.error(f"Failed to initialize ML models: {str(e)}")
@@ -219,8 +245,13 @@ class ModelService:
             # Extract vehicle region
             x, y, w, h = bbox['x'], bbox['y'], bbox['width'], bbox['height']
             
-            # Add some padding and ensure within bounds
-            padding = 10
+            # ✅ Filtrar vehículos muy pequeños (no vale la pena hacer OCR)
+            if w < 60 or h < 40:
+                logger.debug(f"⏭️ Vehicle too small for OCR: {w}x{h} (min: 60x40)")
+                return None
+            
+            # ✅ Aumentar padding para capturar más área (especialmente donde está la placa)
+            padding = 20  # Aumentado de 10 a 20
             x1 = max(0, x - padding)
             y1 = max(0, y - padding)
             x2 = min(frame.shape[1], x + w + padding)
@@ -228,31 +259,113 @@ class ModelService:
             
             vehicle_crop = frame[y1:y2, x1:x2]
             
+            logger.debug(f"🖼️ Vehicle crop size: {vehicle_crop.shape[1]}x{vehicle_crop.shape[0]} (bbox: {w}x{h})")
+            
             if vehicle_crop.size == 0:
+                logger.warning("⚠️ Empty vehicle crop, skipping OCR")
                 return None
             
-            # Run OCR in thread pool
-            results = await asyncio.get_event_loop().run_in_executor(
-                self.executor,
-                lambda: self.ocr_reader.readtext(vehicle_crop)
-            )
+            # ✅ Mejorar calidad de imagen para OCR
+            # Resize si es muy pequeño (mínimo 150px de ancho)
+            if vehicle_crop.shape[1] < 150:
+                scale = 150 / vehicle_crop.shape[1]
+                new_width = 150
+                new_height = int(vehicle_crop.shape[0] * scale)
+                vehicle_crop = cv2.resize(vehicle_crop, (new_width, new_height), interpolation=cv2.INTER_CUBIC)
+                logger.debug(f"   🔍 Resized to: {new_width}x{new_height}")
+            
+            # ✅ Estrategia: Probar MÚLTIPLES versiones de la imagen y tomar la mejor
+            # Versión 1: Original (a veces funciona mejor)
+            # Versión 2: Escala de grises con CLAHE (mejor contraste)
+            # Versión 3: Con sharpening (mejora bordes de texto)
+            images_to_try = [vehicle_crop]  # Original primero
+            
+            # Crear versión mejorada con CLAHE (sin threshold binario que puede ser demasiado agresivo)
+            if len(vehicle_crop.shape) == 3:
+                gray = cv2.cvtColor(vehicle_crop, cv2.COLOR_BGR2GRAY)
+            else:
+                gray = vehicle_crop
+            
+            # CLAHE para mejorar contraste
+            clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+            enhanced = clahe.apply(gray)
+            enhanced_bgr = cv2.cvtColor(enhanced, cv2.COLOR_GRAY2BGR)
+            images_to_try.append(enhanced_bgr)
+            
+            # Versión 3: Aplicar sharpening para mejorar bordes de texto
+            kernel_sharpening = np.array([
+                [-1, -1, -1],
+                [-1,  9, -1],
+                [-1, -1, -1]
+            ])
+            sharpened = cv2.filter2D(vehicle_crop, -1, kernel_sharpening)
+            images_to_try.append(sharpened)
+            
+            logger.debug(f"   🎨 Will try {len(images_to_try)} image versions for OCR")
+            
+            # Run OCR in thread pool for each version
+            all_results = []
+            for idx, img in enumerate(images_to_try):
+                results = await asyncio.get_event_loop().run_in_executor(
+                    self.executor,
+                    lambda i=img: self.ocr_reader.readtext(
+                        i,
+                        detail=1,              # Return bbox, text, confidence
+                        paragraph=False,       # Detect by line/word, not paragraph
+                        min_size=10,          # ✅ Detect smaller text (default: 20)
+                        text_threshold=0.3,   # ✅ Lower text detection threshold
+                        low_text=0.2,         # ✅ More permissive for weak text
+                        link_threshold=0.2,   # ✅ Link text boxes more easily
+                        canvas_size=2560,     # ✅ Internal resolution (default: 2560)
+                        mag_ratio=1.5,        # ✅ Magnification ratio for better detection
+                        slope_ths=0.3,        # ✅ Allow more text rotation
+                        ycenter_ths=0.5,      # ✅ Y-center threshold for grouping
+                        height_ths=0.7,       # ✅ Height ratio for grouping
+                        width_ths=0.9,        # ✅ Width threshold
+                        add_margin=0.15       # ✅ Add margin around detected text
+                    )
+                )
+                if results:
+                    logger.debug(f"   📊 Version {idx+1}: {len(results)} text(s) detected")
+                    all_results.extend(results)
+            
+            # Usar todos los resultados combinados
+            results = all_results
+            
+            logger.info(f"🔍 OCR raw results: {len(results)} text(s) detected")
             
             # Process OCR results
             plates = []
             for (bbox, text, conf) in results:
+                logger.debug(f"   📝 Raw text: '{text}' (conf: {conf:.2f})")
+                
                 # Clean text: remove spaces, keep only alphanumeric and hyphens
                 text = text.replace(' ', '').upper()
                 text = ''.join(c for c in text if c.isalnum() or c == '-')
                 
+                logger.debug(f"   📝 Cleaned text: '{text}'")
+                
+                # ✅ Filtrar por confianza mínima (REDUCIDO a 0.2 con parámetros avanzados de EasyOCR)
+                if conf < 0.2:
+                    logger.debug(f"   ⚠️ Low confidence: {conf:.2f} < 0.2")
+                    continue
+                
                 # Validate plate format (basic)
                 if self._is_valid_plate_format(text):
-                    plates.append((text, conf))
+                    # ✅ Normalizar placa al formato con guion
+                    normalized_text = self._normalize_plate(text)
+                    logger.info(f"   ✅ Valid plate format: '{text}' → '{normalized_text}' (conf: {conf:.2f})")
+                    plates.append((normalized_text, conf))
+                else:
+                    logger.debug(f"   ❌ Invalid plate format: '{text}'")
             
             # Return best match
             if plates:
                 plates.sort(key=lambda x: x[1], reverse=True)
+                logger.info(f"🎯 Best plate match: '{plates[0][0]}' (conf: {plates[0][1]:.2f})")
                 return plates[0]
             
+            logger.warning(f"⚠️ No valid plates found from {len(results)} OCR results")
             return None
             
         except Exception as e:
@@ -262,28 +375,73 @@ class ModelService:
     def _is_valid_plate_format(self, text: str) -> bool:
         """
         Validate license plate format (Peru format)
-        AAA-123, AB-1234, A12-345
+        Formatos válidos:
+        - ABC123 (6 chars) → ABC-123
+        - ABC1234 (7 chars) → ABC-1234  
+        - B7J482 (6 chars) → B7J-482
+        - AB1234 (6 chars) → AB-1234
+        
+        ✅ VALIDACIÓN FLEXIBLE: Acepta 6-7 caracteres alfanuméricos
         """
-        if len(text) < 5 or len(text) > 8:
+        # Longitud debe ser 6 o 7 caracteres (sin guion)
+        if len(text) < 6 or len(text) > 7:
             return False
         
-        if '-' not in text:
+        # Debe contener al menos una letra Y un número
+        has_letter = any(c.isalpha() for c in text)
+        has_number = any(c.isdigit() for c in text)
+        
+        if not (has_letter and has_number):
             return False
         
-        parts = text.split('-')
-        if len(parts) != 2:
-            return False
+        # ✅ Validar patrones comunes de placas peruanas:
+        # Patrón 1: 3 letras + 3-4 números (ABC123, ABC1234)
+        if len(text) >= 6:
+            letters_start = text[:3]
+            numbers_end = text[3:]
+            if letters_start.isalpha() and numbers_end.isdigit():
+                return True
         
-        letters, numbers = parts[0], parts[1]
+        # Patrón 2: 2 letras + 4 números (AB1234)
+        if len(text) == 6:
+            letters_start = text[:2]
+            numbers_end = text[2:]
+            if letters_start.isalpha() and numbers_end.isdigit():
+                return True
         
-        # Check various Peru formats
-        valid_formats = [
-            len(letters) == 3 and letters.isalpha() and numbers.isdigit() and len(numbers) in [3, 4],  # AAA-123 or AAA-1234
-            len(letters) == 2 and letters.isalpha() and numbers.isdigit() and len(numbers) == 4,  # AB-1234
-            len(letters) == 3 and letters[:1].isalpha() and letters[1:].isdigit() and numbers.isdigit() and len(numbers) == 3  # A12-345
-        ]
+        # Patrón 3: Letra+Número+Letra+3 números (B7J482, A1B234)
+        if len(text) == 6:
+            if text[0].isalpha() and text[1].isdigit() and text[2].isalpha() and text[3:].isdigit():
+                return True
         
-        return any(valid_formats)
+        return False
+    
+    def _normalize_plate(self, text: str) -> str:
+        """
+        Normalizar placa al formato con guion
+        ABC123 → ABC-123
+        ABC1234 → ABC-1234
+        B7J482 → B7J-482
+        AB1234 → AB-1234
+        """
+        # Si ya tiene guion, retornar tal cual
+        if '-' in text:
+            return text
+        
+        # Patrón 1: 3 letras + 3-4 números (ABC123 → ABC-123, ABC1234 → ABC-1234)
+        if len(text) >= 6 and text[:3].isalpha() and text[3:].isdigit():
+            return f"{text[:3]}-{text[3:]}"
+        
+        # Patrón 2: 2 letras + 4 números (AB1234 → AB-1234)
+        if len(text) == 6 and text[:2].isalpha() and text[2:].isdigit():
+            return f"{text[:2]}-{text[2:]}"
+        
+        # Patrón 3: Letra+Número+Letra+3 números (B7J482 → B7J-482)
+        if len(text) == 6 and text[0].isalpha() and text[1].isdigit() and text[2].isalpha() and text[3:].isdigit():
+            return f"{text[:3]}-{text[3:]}"
+        
+        # Si no coincide con ningún patrón, retornar tal cual
+        return text
     
     async def estimate_speed(
         self,
@@ -343,6 +501,129 @@ class ModelService:
         except Exception as e:
             logger.error(f"Speed estimation failed: {str(e)}")
             return None
+    
+    async def detect_traffic_light(
+        self,
+        frame: np.ndarray,
+        roi: Optional[Tuple[int, int, int, int]] = None
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Detect traffic light state in frame
+        
+        Args:
+            frame: Input frame
+            roi: Region of interest (x1, y1, x2, y2) or None for auto-detect
+            
+        Returns:
+            Dict with 'state', 'confidence', 'bbox' or None
+        """
+        if not self._initialized:
+            await self.initialize()
+        
+        if self.traffic_light_detector is None:
+            logger.debug("Traffic light detector not available")
+            return None
+        
+        try:
+            detection = await asyncio.get_event_loop().run_in_executor(
+                self.executor,
+                lambda: self.traffic_light_detector.detect(frame, roi)
+            )
+            
+            logger.debug(
+                f"🚦 Traffic light: {detection['state']} "
+                f"(confidence={detection['confidence']:.2f})"
+            )
+            
+            return detection
+            
+        except Exception as e:
+            logger.error(f"Traffic light detection failed: {str(e)}")
+            return None
+    
+    def is_red_light(self, traffic_light_detection: Optional[Dict[str, Any]]) -> bool:
+        """
+        Check if traffic light is red
+        
+        Args:
+            traffic_light_detection: Detection result from detect_traffic_light
+            
+        Returns:
+            True if light is red with sufficient confidence
+        """
+        if traffic_light_detection is None:
+            return False
+        
+        if self.traffic_light_detector is None:
+            return False
+        
+        return self.traffic_light_detector.is_red(traffic_light_detection)
+    
+    async def detect_lanes(
+        self,
+        frame: np.ndarray,
+        roi_vertices: Optional[np.ndarray] = None
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Detect lane markings in frame
+        
+        Args:
+            frame: Input frame
+            roi_vertices: ROI vertices for lane detection
+            
+        Returns:
+            Dict with 'lanes', 'has_center_line', 'lane_count' or None
+        """
+        if not self._initialized:
+            await self.initialize()
+        
+        if self.lane_detector is None:
+            logger.debug("Lane detector not available")
+            return None
+        
+        try:
+            detection = await asyncio.get_event_loop().run_in_executor(
+                self.executor,
+                lambda: self.lane_detector.detect(frame, roi_vertices)
+            )
+            
+            logger.debug(
+                f"🛣️ Lanes detected: {detection['lane_count']} lanes "
+                f"(center: {detection['has_center_line']})"
+            )
+            
+            return detection
+            
+        except Exception as e:
+            logger.error(f"Lane detection failed: {str(e)}")
+            return None
+    
+    def check_lane_violation(
+        self,
+        vehicle_bbox: Tuple[float, float, float, float],
+        lane_detection: Optional[Dict[str, Any]] = None
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Check if vehicle is violating lane rules
+        
+        Args:
+            vehicle_bbox: Vehicle bounding box [x1, y1, x2, y2]
+            lane_detection: Lane detection result
+            
+        Returns:
+            Dict with violation info or None
+        """
+        if self.lane_detector is None:
+            return None
+        
+        if lane_detection is None:
+            return None
+        
+        lanes = lane_detection.get('lanes', {})
+        if not lanes:
+            return None
+        
+        return self.lane_detector.check_violation(vehicle_bbox, lanes)
     
     def shutdown(self):
         """Cleanup resources"""

@@ -48,7 +48,7 @@ class Settings(BaseSettings):
     EZVIZ_HTTP_PORT: int = 80
     
     # Logging
-    LOG_LEVEL: str = "INFO"
+    LOG_LEVEL: str = "DEBUG"  # Cambiado temporalmente para diagnosticar red light detection
     
     # ML Models
     YOLO_MODEL_PATH: str = "/app/models/yolov8n.pt"
@@ -58,7 +58,7 @@ class Settings(BaseSettings):
     OCR_GPU: bool = False
     
     # Django Backend API
-    DJANGO_API_URL: str = "http://django:8000"
+    DJANGO_API_URL: str = os.getenv("DJANGO_API_URL", "http://localhost:8000")
     DJANGO_API_TIMEOUT: int = 30
     LOG_FORMAT: str = "json"  # json or console
     

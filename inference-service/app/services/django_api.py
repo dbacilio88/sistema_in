@@ -17,6 +17,8 @@ class DjangoAPIService:
     def __init__(self):
         self.base_url = settings.DJANGO_API_URL
         self.timeout = settings.DJANGO_API_TIMEOUT
+        logger.info(f"🔗 DjangoAPIService initialized with URL: {self.base_url}")
+        logger.info(f"⏱️  Timeout: {self.timeout}s")
         
     async def create_infraction(
         self,
@@ -32,28 +34,45 @@ class DjangoAPIService:
             Created infraction data or None
         """
         try:
+            logger.info(f"📤 Attempting to create infraction: type={infraction_data.get('infraction_type')}, plate={infraction_data.get('license_plate_detected', 'N/A')}")
+            
             async with httpx.AsyncClient(timeout=self.timeout) as client:
+                url = f"{self.base_url}/api/infractions/"
+                logger.debug(f"POST {url}")
+                
                 response = await client.post(
-                    f"{self.base_url}/api/infractions/",
+                    url,
                     json=infraction_data
                 )
                 
+                logger.info(f"📥 Django API response: status={response.status_code}")
+                
                 if response.status_code in [200, 201]:
+                    result = response.json()
                     logger.info(
-                        "Infraction created successfully",
-                        infraction_id=response.json().get('id')
+                        f"✅ Infraction created successfully: "
+                        f"code={result.get('infraction_code')}, "
+                        f"id={result.get('id')}, "
+                        f"type={result.get('infraction_type')}"
                     )
-                    return response.json()
+                    return result
                 else:
                     logger.error(
-                        "Failed to create infraction",
-                        status_code=response.status_code,
-                        response=response.text
+                        f"❌ Failed to create infraction: "
+                        f"status={response.status_code}, "
+                        f"response={response.text[:200]}"
                     )
                     return None
                     
+        except httpx.ConnectError as e:
+            logger.error(f"🔌 Connection error to Django API ({self.base_url}): {str(e)}")
+            logger.error("⚠️ Verifica que el backend Django esté corriendo en el puerto correcto")
+            return None
+        except httpx.TimeoutException as e:
+            logger.error(f"⏱️ Timeout connecting to Django API: {str(e)}")
+            return None
         except Exception as e:
-            logger.error(f"Error creating infraction: {str(e)}")
+            logger.error(f"❌ Error creating infraction: {str(e)}", exc_info=True)
             return None
     
     async def get_or_create_vehicle(
@@ -177,6 +196,68 @@ class DjangoAPIService:
             
         except Exception as e:
             logger.error(f"Error uploading evidence: {str(e)}")
+            return None
+    
+    async def predict_recidivism(
+        self,
+        driver_dni: str,
+        infraction_id: str
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Request ML recidivism prediction for a driver
+        
+        Args:
+            driver_dni: Driver's DNI/document number
+            infraction_id: UUID of the infraction
+            
+        Returns:
+            Prediction result or None
+        """
+        try:
+            logger.info(f"🤖 Requesting ML prediction for driver {driver_dni}, infraction {infraction_id}")
+            
+            async with httpx.AsyncClient(timeout=self.timeout) as client:
+                url = f"{self.base_url}/api/ml/predictions/recidivism/"
+                
+                payload = {
+                    "driver_dni": driver_dni,
+                    "infraction_id": infraction_id
+                }
+                
+                logger.debug(f"POST {url} with payload: {payload}")
+                
+                response = await client.post(
+                    url,
+                    json=payload
+                )
+                
+                logger.info(f"📥 ML API response: status={response.status_code}")
+                
+                if response.status_code in [200, 201]:
+                    result = response.json()
+                    logger.info(
+                        f"✅ ML prediction successful: "
+                        f"risk={result.get('recidivism_probability', 0)*100:.1f}%, "
+                        f"category={result.get('risk_category')}, "
+                        f"time={result.get('prediction_time_ms', 0):.2f}ms"
+                    )
+                    return result
+                else:
+                    logger.error(
+                        f"❌ ML prediction failed: "
+                        f"status={response.status_code}, "
+                        f"response={response.text[:200]}"
+                    )
+                    return None
+                    
+        except httpx.ConnectError as e:
+            logger.error(f"🔌 Connection error to ML API: {str(e)}")
+            return None
+        except httpx.TimeoutException as e:
+            logger.error(f"⏱️ Timeout calling ML API: {str(e)}")
+            return None
+        except Exception as e:
+            logger.error(f"❌ Error requesting ML prediction: {str(e)}", exc_info=True)
             return None
 
 

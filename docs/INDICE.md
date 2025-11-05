@@ -6,6 +6,125 @@ Este directorio contiene la documentación técnica completa del **Sistema Intel
 
 ---
 
+## 🚀 NUEVO: Optimizaciones Agresivas de FPS V2 (Nov 2025)
+
+### [📄 RESUMEN_OPTIMIZACIONES_V2.md](../RESUMEN_OPTIMIZACIONES_V2.md) ⚡ **[LEER PRIMERO]**
+**Resumen Ejecutivo - Optimizaciones FPS V2**
+
+Resumen rápido de las 6 optimizaciones implementadas para maximizar FPS.
+
+**Contenido:**
+- ✅ Mejora de rendimiento: +500-700% FPS
+- � 6 optimizaciones implementadas
+- 📊 Configuración recomendada por modo
+- 🧪 Cómo probar el sistema
+- 📈 Tabla comparativa de rendimiento
+- 🔍 Desglose de latencia
+- 🚨 Troubleshooting
+
+**FPS Esperado:** 35-60 FPS (vs 5-10 FPS baseline)
+
+**Ideal para:** Configurar el sistema para video fluido
+
+---
+
+### [OPTIMIZACION_FPS_V2.md](./OPTIMIZACION_FPS_V2.md) 📊 **[DOCUMENTACIÓN TÉCNICA]**
+**Guía Técnica Completa - Optimizaciones Agresivas**
+
+Documentación técnica detallada de todas las optimizaciones.
+
+**Contenido:**
+- 📋 Resumen ejecutivo con tabla de mejoras
+- 1️⃣ Frame Skipping Inteligente
+- 2️⃣ YOLO Resolution Reduction
+- 3️⃣ Background OCR (Async)
+- 4️⃣ JPEG Compression
+- 5️⃣ Log Level Configurable
+- 6️⃣ Detection Cache
+- 📊 Configuraciones recomendadas (3 modos)
+- 📈 Benchmarks esperados
+- 🧪 Guía de pruebas
+- 🔧 Troubleshooting detallado
+- 📝 Notas técnicas
+
+**Ideal para:** Entender profundamente cómo funcionan las optimizaciones
+
+---
+
+## 🆕 Sistema OCR Universal (Nov 2025)
+
+### [GUIA_RAPIDA_OCR.md](./GUIA_RAPIDA_OCR.md) 🚀 **[INICIO AQUÍ]**
+**Guía Rápida: OCR para Todas las Infracciones**
+
+Guía de inicio rápido para usar el sistema de detección de placas.
+
+**Contenido:**
+- ✅ Tipos de infracciones soportadas
+- 🚀 Inicio rápido (3 pasos)
+- 📊 Verificación de funcionamiento
+- 🔧 Configuraciones por escenario
+- ⚠️ Troubleshooting común
+- 📝 Ejemplos de logs exitosos
+
+**Ideal para:** Comenzar a usar el sistema OCR inmediatamente
+
+---
+
+### [OCR_UNIVERSAL_INFRACCIONES.md](./OCR_UNIVERSAL_INFRACCIONES.md) 📋
+**Sistema OCR Universal - Documentación Técnica**
+
+Documentación técnica completa del sistema de reconocimiento de placas.
+
+**Contenido:**
+- Descripción general del sistema
+- Flujo de detección (diagrama completo)
+- Proceso OCR (triple versión de imágenes)
+- EasyOCR con parámetros avanzados
+- Validación y normalización de placas
+- Sistema de deduplicación
+- Estadísticas de rendimiento
+- Limitaciones y mejoras planificadas
+
+**Ideal para:** Entender cómo funciona el OCR técnicamente
+
+---
+
+### [CONFIGURACION_OCR_INFRACCIONES.md](./CONFIGURACION_OCR_INFRACCIONES.md) 🎛️
+**Configuración Detallada por Tipo de Infracción**
+
+Guía de configuración avanzada para cada tipo de infracción.
+
+**Contenido:**
+- Configuración específica por infracción:
+  - Exceso de velocidad (speeding)
+  - Semáforo rojo (red_light)
+  - Invasión de carril (wrong_lane)
+- Ejemplos por escenario (testing, producción)
+- Calibración de parámetros (stop_line_y, lane_roi)
+- Troubleshooting avanzado
+- Comandos de debug completos
+
+**Ideal para:** Configurar el sistema para escenarios específicos
+
+---
+
+### [RESUMEN_OCR_UNIVERSAL.md](./RESUMEN_OCR_UNIVERSAL.md) 📊
+**Resumen Ejecutivo: Implementación OCR Universal**
+
+Resumen completo de los cambios implementados.
+
+**Contenido:**
+- Objetivo y alcance
+- Cambios en el código
+- Testing realizado
+- Mejoras de rendimiento (antes vs ahora)
+- Estado del sistema
+- Próximos pasos
+
+**Ideal para:** Revisar qué cambió y estado actual del sistema
+
+---
+
 ## 📄 Documentos Disponibles
 
 ### 1. [ARQUITECTURA.md](./ARQUITECTURA.md) 🏗️

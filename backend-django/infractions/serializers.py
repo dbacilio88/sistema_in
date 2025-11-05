@@ -47,6 +47,7 @@ class InfractionListSerializer(serializers.ModelSerializer):
             'severity', 'severity_display', 'status', 'status_display',
             'device_name', 'zone_name', 'license_plate_detected',
             'detected_speed', 'speed_limit', 'fine_amount',
+            'recidivism_risk', 'processing_time_seconds', 'ml_prediction_time_ms',
             'detected_at', 'created_at'
         ]
 
@@ -99,7 +100,8 @@ class InfractionCreateSerializer(serializers.ModelSerializer):
             'license_plate_detected', 'license_plate_confidence',
             'detected_speed', 'speed_limit', 'location_lat', 'location_lon',
             'snapshot_url', 'video_url', 'evidence_metadata',
-            'status', 'detected_at'
+            'status', 'detected_at',
+            'processing_time_seconds', 'ml_prediction_time_ms', 'recidivism_risk'
         ]
         extra_kwargs = {
             'device': {'required': False},

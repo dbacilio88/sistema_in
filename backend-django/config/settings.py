@@ -60,6 +60,7 @@ INSTALLED_APPS = [
     'infractions.apps.InfractionsConfig',
     'vehicles.apps.VehiclesConfig',
     'notifications.apps.NotificationsConfig',
+    'ml_models.apps.MLModelsConfig',  # ML Models for predictive analytics
 ]
 
 MIDDLEWARE = [

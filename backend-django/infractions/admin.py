@@ -8,7 +8,9 @@ from .models_detection import VehicleDetection, DetectionStatistics
 class InfractionAdmin(admin.ModelAdmin):
     list_display = [
         'infraction_code', 'infraction_type', 'license_plate_detected', 
-        'detected_speed', 'speed_limit', 'device', 'status', 'detected_at'
+        'detected_speed', 'speed_limit', 'device', 'status', 
+        'processing_time_display', 'ml_prediction_time_display', 
+        'recidivism_risk_display', 'detected_at'
     ]
     list_filter = [
         'infraction_type', 'status', 'severity', 'device__zone', 
@@ -60,6 +62,12 @@ class InfractionAdmin(admin.ModelAdmin):
             ],
             'classes': ['collapse']
         }),
+        ('🤖 ML & Performance Metrics', {
+            'fields': [
+                'recidivism_risk', 'risk_factors',
+                'processing_time_seconds', 'ml_prediction_time_ms'
+            ]
+        }),
         ('Metadata', {
             'fields': ['created_at', 'updated_at'],
             'classes': ['collapse']
@@ -86,6 +94,46 @@ class InfractionAdmin(admin.ModelAdmin):
                 return "Within speed limit"
         return "N/A"
     speed_excess_display.short_description = "Speed Excess"
+    
+    def processing_time_display(self, obj):
+        """Display processing time in seconds"""
+        if obj.processing_time_seconds:
+            return f"{obj.processing_time_seconds:.3f}s"
+        return "-"
+    processing_time_display.short_description = "⏱️ Processing"
+    processing_time_display.admin_order_field = 'processing_time_seconds'
+    
+    def ml_prediction_time_display(self, obj):
+        """Display ML prediction time in milliseconds"""
+        if obj.ml_prediction_time_ms:
+            return f"{obj.ml_prediction_time_ms:.2f}ms"
+        return "-"
+    ml_prediction_time_display.short_description = "🤖 ML Time"
+    ml_prediction_time_display.admin_order_field = 'ml_prediction_time_ms'
+    
+    def recidivism_risk_display(self, obj):
+        """Display recidivism risk with color coding"""
+        if obj.recidivism_risk is not None:
+            risk_pct = int(obj.recidivism_risk * 100)
+            if obj.recidivism_risk >= 0.75:
+                color = '#dc3545'  # red
+                icon = '🔴'
+            elif obj.recidivism_risk >= 0.50:
+                color = '#fd7e14'  # orange
+                icon = '🟠'
+            elif obj.recidivism_risk >= 0.25:
+                color = '#ffc107'  # yellow
+                icon = '🟡'
+            else:
+                color = '#28a745'  # green
+                icon = '🟢'
+            return format_html(
+                '<span style="color: {}; font-weight: bold;">{} {}%</span>',
+                color, icon, risk_pct
+            )
+        return "-"
+    recidivism_risk_display.short_description = "🎯 Risk"
+    recidivism_risk_display.admin_order_field = 'recidivism_risk'
 
 
 @admin.register(InfractionEvent)

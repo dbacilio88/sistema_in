@@ -101,6 +101,23 @@ class Driver(models.Model):
     is_suspended = models.BooleanField(default=False)
     suspension_reason = models.TextField(blank=True)
     
+    # ML Risk Score
+    risk_score = models.FloatField(
+        default=0.0,
+        help_text="ML-calculated risk score (0-1)"
+    )
+    risk_category = models.CharField(
+        max_length=20,
+        choices=[
+            ('low', 'Low Risk'),
+            ('medium', 'Medium Risk'),
+            ('high', 'High Risk'),
+            ('critical', 'Critical Risk'),
+        ],
+        default='low'
+    )
+    risk_updated_at = models.DateTimeField(null=True, blank=True)
+    
     # Metadata
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

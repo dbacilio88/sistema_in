@@ -69,7 +69,10 @@ class Device(models.Model):
     
     # Network configuration
     ip_address = models.GenericIPAddressField()
-    rtsp_url = models.URLField(help_text="RTSP stream URL")
+    rtsp_url = models.CharField(
+        max_length=255,
+        help_text="RTSP stream URL (supports rtsp://user:pass@ip:port/stream format)"
+    )
     rtsp_username = models.CharField(max_length=50, blank=True)
     rtsp_password = models.CharField(max_length=100, blank=True)
     

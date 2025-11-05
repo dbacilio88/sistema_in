@@ -81,6 +81,35 @@ class Infraction(models.Model):
     fine_due_date = models.DateField(null=True, blank=True)
     payment_date = models.DateTimeField(null=True, blank=True)
     
+    # ML Predictions
+    recidivism_risk = models.FloatField(
+        null=True,
+        blank=True,
+        help_text="Predicted recidivism probability (0-1)"
+    )
+    accident_risk = models.FloatField(
+        null=True,
+        blank=True,
+        help_text="Predicted accident risk (0-1)"
+    )
+    risk_factors = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text="Top risk factors with importance scores"
+    )
+    
+    # Performance Metrics
+    processing_time_seconds = models.FloatField(
+        null=True,
+        blank=True,
+        help_text="Time taken to process and recognize the infraction (in seconds)"
+    )
+    ml_prediction_time_ms = models.FloatField(
+        null=True,
+        blank=True,
+        help_text="Time taken for ML prediction (in milliseconds)"
+    )
+    
     # Timestamps
     detected_at = models.DateTimeField(db_index=True, help_text="When the infraction was detected")
     created_at = models.DateTimeField(auto_now_add=True)

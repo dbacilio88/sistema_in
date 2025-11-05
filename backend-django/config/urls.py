@@ -61,6 +61,10 @@ def api_root(request):
             'vehicles': '/api/vehicles/',
             'notifications': '/api/notifications/',
             'auth': '/api/auth/',
+            'ml_models': '/api/ml/models/',
+            'ml_predictions': '/api/ml/predictions/',
+            'ml_predict_recidivism': '/api/ml/predictions/recidivism/',
+            'ml_extract_features': '/api/ml/predictions/features/',
         }
     })
 
@@ -95,6 +99,7 @@ urlpatterns = [
     path('api/infractions/', include('infractions.urls')),
     path('api/vehicles/', include('vehicles.urls')),
     path('api/notifications/', include('notifications.urls')),
+    path('api/ml/', include('ml_models.urls')),
 ]
 
 # Serve static and media files in development
