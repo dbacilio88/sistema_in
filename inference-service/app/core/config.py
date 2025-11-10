@@ -10,7 +10,7 @@ class Settings(BaseSettings):
     APP_NAME: str = "Traffic Inference Service"
     VERSION: str = "1.0.0"
     DEBUG: bool = False
-    API_V1_STR: str = "/api"
+    API_V1_STR: str = "/api/v1"
     
     # Server
     HOST: str = "0.0.0.0"
