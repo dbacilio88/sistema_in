@@ -40,7 +40,9 @@ def api_root(request):
     from devices.models import Zone, Device
     from vehicles.models import Vehicle
     from infractions.models import Infraction
-    from django.contrib.auth.models import User
+    from django.contrib.auth import get_user_model
+    
+    User = get_user_model()  # Obtener el modelo de usuario personalizado
     
     return Response({
         'message': 'Traffic Infraction Detection System API',
