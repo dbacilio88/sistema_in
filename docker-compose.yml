@@ -133,7 +133,7 @@ services:
       MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-SecurePassword123!}
       DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:-django-insecure-dev-key}
       DEBUG: ${DEBUG:-True}
-      ALLOWED_HOSTS: ${ALLOWED_HOSTS:-localhost,127.0.0.1,0.0.0.0,django}
+      ALLOWED_HOSTS: ${ALLOWED_HOSTS:-localhost,127.0.0.1,0.0.0.0,django,54.86.67.166}
       SECURE_SSL_REDIRECT: ${SECURE_SSL_REDIRECT:-False}
     ports:
       - "8000:8000"
