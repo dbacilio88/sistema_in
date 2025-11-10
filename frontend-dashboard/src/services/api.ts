@@ -1,5 +1,27 @@
 // API Service for backend communication
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+// Detectar automáticamente la URL base según el entorno
+const getApiBaseUrl = () => {
+  // Si estamos en el navegador
+  if (typeof window !== 'undefined') {
+    // Si hay una variable de entorno configurada, usarla
+    if (process.env.NEXT_PUBLIC_API_URL) {
+      return process.env.NEXT_PUBLIC_API_URL;
+    }
+    
+    // Si estamos en localhost, usar localhost
+    if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+      return 'http://localhost:8000';
+    }
+    
+    // Si estamos en una IP pública (AWS), usar la misma IP del navegador
+    return `http://${window.location.hostname}:8000`;
+  }
+  
+  // Para Server-Side Rendering, usar la variable de entorno o fallback
+  return process.env.NEXT_PUBLIC_API_URL || process.env.API_URL || 'http://localhost:8000';
+};
+
+const API_BASE_URL = getApiBaseUrl();
 
 export interface Infraction {
   id: string;
@@ -87,7 +109,14 @@ class ApiService {
 
   constructor() {
     this.baseURL = API_BASE_URL;
+    
+    // Debug logging
     if (typeof window !== 'undefined') {
+      console.log('🔧 API Service initialized');
+      console.log('🌐 Base URL:', this.baseURL);
+      console.log('🖥️ Window hostname:', window.location.hostname);
+      console.log('🔧 NEXT_PUBLIC_API_URL:', process.env.NEXT_PUBLIC_API_URL);
+      
       this.token = localStorage.getItem('access_token');
     }
   }

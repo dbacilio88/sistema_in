@@ -17,6 +17,28 @@ fi
 
 echo "🌐 IP Pública detectada: $PUBLIC_IP"
 
+# Crear archivo .env.aws dinámico con la IP real
+echo "⚙️ Configurando variables de entorno para AWS..."
+cat > .env.aws << EOF
+# AWS Environment Variables (generado automáticamente)
+DB_HOST=postgres
+DEBUG=False
+ALLOWED_HOSTS=localhost,127.0.0.1,0.0.0.0,django,$PUBLIC_IP
+SECURE_SSL_REDIRECT=False
+
+# Frontend URLs (externas - para el navegador)
+NEXT_PUBLIC_API_URL=http://$PUBLIC_IP:8000
+NEXT_PUBLIC_ML_SERVICE_URL=http://$PUBLIC_IP:8001
+NEXT_PUBLIC_WS_URL=ws://$PUBLIC_IP:8000
+
+# Backend URLs (internas - para SSR)
+API_URL=http://django:8000
+ML_SERVICE_URL=http://inference:8001
+
+# CORS origins
+CORS_ALLOWED_ORIGINS=http://localhost:3000,http://localhost:3002,http://$PUBLIC_IP:3002,http://$PUBLIC_IP:8000
+EOF
+
 # Exportar variables de entorno
 export PUBLIC_IP=$PUBLIC_IP
 export COMPOSE_PROJECT_NAME=sistema-in
@@ -32,7 +54,7 @@ fi
 
 # Detener servicios existentes
 echo "⏹️ Deteniendo servicios existentes..."
-docker-compose -f docker-compose.yml -f docker-compose.aws.yml down || true
+docker-compose -f docker-compose.yml -f docker-compose.aws.yml --env-file .env.aws down || true
 
 # Limpiar contenedores e imágenes no utilizadas
 echo "🧹 Limpiando recursos Docker..."
@@ -40,26 +62,30 @@ docker system prune -f
 
 # Construir imágenes
 echo "🔨 Construyendo imágenes..."
-docker-compose -f docker-compose.yml -f docker-compose.aws.yml build --no-cache
+docker-compose -f docker-compose.yml -f docker-compose.aws.yml --env-file .env.aws build --no-cache
 
 # Iniciar servicios de forma escalonada
 echo "🚀 Iniciando servicios de base de datos..."
-docker-compose -f docker-compose.yml -f docker-compose.aws.yml up -d postgres redis minio
+docker-compose -f docker-compose.yml -f docker-compose.aws.yml --env-file .env.aws up -d postgres redis minio
 
 echo "⏳ Esperando que las bases de datos estén listas..."
 sleep 20
 
 echo "🚀 Iniciando servicios de aplicación..."
-docker-compose -f docker-compose.yml -f docker-compose.aws.yml up -d django inference
+docker-compose -f docker-compose.yml -f docker-compose.aws.yml --env-file .env.aws up -d django inference
 
 echo "⏳ Esperando que los servicios backend estén listos..."
 sleep 30
 
-echo "🚀 Iniciando frontend y servicios adicionales..."
-docker-compose -f docker-compose.yml -f docker-compose.aws.yml up -d
+echo "🚀 Iniciando frontend con IP pública configurada..."
+echo "   Frontend configurado para usar: http://$PUBLIC_IP:8000"
+docker-compose -f docker-compose.yml -f docker-compose.aws.yml --env-file .env.aws up -d frontend
+
+echo "🚀 Iniciando servicios adicionales..."
+docker-compose -f docker-compose.yml -f docker-compose.aws.yml --env-file .env.aws up -d
 
 echo "📊 Verificando estado de los servicios..."
-docker-compose -f docker-compose.yml -f docker-compose.aws.yml ps
+docker-compose -f docker-compose.yml -f docker-compose.aws.yml --env-file .env.aws ps
 
 # Verificar conectividad
 echo ""

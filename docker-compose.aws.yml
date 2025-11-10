@@ -1,34 +1,29 @@
 version: '3.8'
 
 # Override para deployment en AWS
+# Usar: docker-compose -f docker-compose.yml -f docker-compose.aws.yml --env-file .env.aws up -d
+
 services:
   frontend:
+    env_file:
+      - .env.aws
     environment:
       NODE_ENV: production
-      # URLs para el navegador (cliente) - deben usar IP pública
-      NEXT_PUBLIC_API_URL: http://${PUBLIC_IP:-0.0.0.0}:8000
-      NEXT_PUBLIC_ML_SERVICE_URL: http://${PUBLIC_IP:-0.0.0.0}:8001
-      NEXT_PUBLIC_WS_URL: ws://${PUBLIC_IP:-0.0.0.0}:8000
-      NEXT_PUBLIC_WS_INFERENCE_URL: ws://${PUBLIC_IP:-0.0.0.0}:8001/api/ws/inference
-      # URLs internas del servidor (SSR) - usan nombres de contenedores
-      API_URL: http://django:8000
-      ML_SERVICE_URL: http://inference:8001
       WATCHPACK_POLLING: "false"
       
   django:
+    env_file:
+      - .env.aws
     environment:
-      DEBUG: "False"
-      ALLOWED_HOSTS: "localhost,127.0.0.1,0.0.0.0,${PUBLIC_IP:-0.0.0.0},django,traffic-django,*"
-      SECURE_SSL_REDIRECT: "False"
-      # CORS origins dinámicos
-      CORS_ALLOWED_ORIGINS: "http://localhost:3000,http://localhost:3002,http://localhost:8000,http://${PUBLIC_IP:-0.0.0.0}:3000,http://${PUBLIC_IP:-0.0.0.0}:3002,http://${PUBLIC_IP:-0.0.0.0}:8000"
-      # URLs internas - siguen usando nombres de contenedores
+      # Mantener conexiones internas con nombres de contenedores
       POSTGRES_HOST: postgres
       REDIS_URL: redis://redis:6379/0
       RABBITMQ_URL: amqp://${RABBITMQ_USER:-admin}:${RABBITMQ_PASSWORD:-SecurePassword123!}@rabbitmq:5672/
       MINIO_ENDPOINT: minio:9000
       
   inference:
+    env_file:
+      - .env.aws
     environment:
       INFERENCE_DEVICE: ${INFERENCE_DEVICE:-cpu}
       # URLs internas - siguen usando nombres de contenedores  
@@ -39,6 +34,8 @@ services:
       DJANGO_API_URL: http://django:8000
       
   config-management:
+    env_file:
+      - .env.aws
     environment:
       ENVIRONMENT: production
       # URLs internas - siguen usando nombres de contenedores
