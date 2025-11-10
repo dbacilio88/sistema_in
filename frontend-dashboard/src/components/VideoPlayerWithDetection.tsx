@@ -163,7 +163,7 @@ export function VideoPlayerWithDetection({
         }
         
         // Connect to inference WebSocket with camera URL
-        const wsUrl = `ws://localhost:8001/stream/ws/camera/${deviceId}?camera_url=${encodeURIComponent(rtspUrl)}`;
+        const wsUrl = `ws://54.86.67.166:8001/stream/ws/camera/${deviceId}?camera_url=${encodeURIComponent(rtspUrl)}`;
         
         const ws = new WebSocket(wsUrl);
         wsRef.current = ws;
