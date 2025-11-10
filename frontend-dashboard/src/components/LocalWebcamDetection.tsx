@@ -472,19 +472,36 @@ export function LocalWebcamDetection({
 
       // Test the HTTP endpoint first (debugging)
       try {
-        let testUrl = inferenceWsUrl.replace('ws://', 'http://');
-        // Si la URL ya incluye /api/ws/inference, removerla para la prueba HTTP
-        if (testUrl.includes('/api/ws/inference')) {
-          testUrl = testUrl.replace('/api/ws/inference', '');
+        // Construir la URL HTTP correctamente desde la URL del servicio ML
+        let testUrl: string;
+        if (process.env.NEXT_PUBLIC_ML_SERVICE_URL) {
+          testUrl = process.env.NEXT_PUBLIC_ML_SERVICE_URL;
+        } else {
+          testUrl = inferenceWsUrl.replace('ws://', 'http://').replace('wss://', 'https://');
+          // Si la URL ya incluye /api/ws/inference, removerla para la prueba HTTP
+          if (testUrl.includes('/api/ws/inference')) {
+            testUrl = testUrl.replace('/api/ws/inference', '');
+          }
+          if (testUrl.includes('/api/v1/ws/inference')) {
+            testUrl = testUrl.replace('/api/v1/ws/inference', '');
+          }
         }
         console.log('🧪 Testing HTTP endpoint first:', `${testUrl}/api/v1/health`);
         const testResponse = await fetch(`${testUrl}/api/v1/health`);
         console.log('✅ HTTP endpoint test result:', testResponse.status, testResponse.statusText);
       } catch (testError) {
         console.error('❌ HTTP endpoint test failed:', testError);
-        let testUrl = inferenceWsUrl.replace('ws://', 'http://');
-        if (testUrl.includes('/api/ws/inference')) {
-          testUrl = testUrl.replace('/api/ws/inference', '');
+        let testUrl: string;
+        if (process.env.NEXT_PUBLIC_ML_SERVICE_URL) {
+          testUrl = process.env.NEXT_PUBLIC_ML_SERVICE_URL;
+        } else {
+          testUrl = inferenceWsUrl.replace('ws://', 'http://').replace('wss://', 'https://');
+          if (testUrl.includes('/api/ws/inference')) {
+            testUrl = testUrl.replace('/api/ws/inference', '');
+          }
+          if (testUrl.includes('/api/v1/ws/inference')) {
+            testUrl = testUrl.replace('/api/v1/ws/inference', '');
+          }
         }
         console.log('💡 Inference service may not be running on:', testUrl);
       }
