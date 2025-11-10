@@ -458,7 +458,7 @@ export function LocalWebcamDetection({
       if (process.env.NEXT_PUBLIC_WS_INFERENCE_URL) {
         wsUrl = inferenceWsUrl; // Ya incluye /api/ws/inference
       } else {
-        wsUrl = `${inferenceWsUrl}/api/ws/inference`;
+        wsUrl = `${inferenceWsUrl}/api/ws/inference`; // Usar la ruta correcta del servicio
       }
 
       console.log('🔌 Connecting to WebSocket:', wsUrl);
@@ -486,8 +486,8 @@ export function LocalWebcamDetection({
             testUrl = testUrl.replace('/api/v1/ws/inference', '');
           }
         }
-        console.log('🧪 Testing HTTP endpoint first:', `${testUrl}/api/v1/health`);
-        const testResponse = await fetch(`${testUrl}/api/v1/health`);
+        console.log('🧪 Testing HTTP endpoint first:', `${testUrl}/api/health`);
+        const testResponse = await fetch(`${testUrl}/api/health`);
         console.log('✅ HTTP endpoint test result:', testResponse.status, testResponse.statusText);
       } catch (testError) {
         console.error('❌ HTTP endpoint test failed:', testError);
