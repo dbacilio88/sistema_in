@@ -215,7 +215,11 @@ services:
   frontend:
     build:
       context: ./frontend-dashboard
-      dockerfile: Dockerfile.dev
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}
+        NEXT_PUBLIC_ML_SERVICE_URL: ${NEXT_PUBLIC_ML_SERVICE_URL:-http://localhost:8001}
+        NEXT_PUBLIC_WS_URL: ${NEXT_PUBLIC_WS_URL:-ws://localhost:8000}
     container_name: traffic-frontend
     ports:
       - "3002:3000"
