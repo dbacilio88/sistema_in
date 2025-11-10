@@ -30,6 +30,8 @@ services:
       RABBITMQ_URL: amqp://${RABBITMQ_USER:-admin}:${RABBITMQ_PASSWORD:-SecurePassword123!}@rabbitmq:5672/
       MINIO_ENDPOINT: minio:9000
       DJANGO_API_URL: http://django:8000
+      # Force OCR_LANGUAGES into the container environment as JSON string to avoid pydantic parse errors
+      OCR_LANGUAGES: '["en"]'
       
   config-management:
     env_file:
