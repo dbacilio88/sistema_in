@@ -365,16 +365,40 @@ export function LocalWebcamDetection({
       } else {
         // Use webcam
         console.log('📷 Requesting webcam access...');
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: {
-            width: { ideal: 1280 },
-            height: { ideal: 720 }
-          },
-          audio: false
-        });
+        
+        // Verificar compatibilidad del navegador
+        if (!navigator.mediaDevices) {
+          throw new Error('Tu navegador no soporta acceso a la cámara. Necesitas usar HTTPS o un navegador compatible.');
+        }
 
-        streamRef.current = stream;
-        video.srcObject = stream;
+        if (!navigator.mediaDevices.getUserMedia) {
+          throw new Error('La API getUserMedia no está disponible en tu navegador.');
+        }
+
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({
+            video: {
+              width: { ideal: 1280 },
+              height: { ideal: 720 }
+            },
+            audio: false
+          });
+
+          streamRef.current = stream;
+          video.srcObject = stream;
+        } catch (mediaError: any) {
+          console.error('❌ Error accediendo a la cámara:', mediaError);
+          
+          if (mediaError.name === 'NotAllowedError') {
+            throw new Error('Permisos de cámara denegados. Por favor, permite el acceso a la cámara y recarga la página.');
+          } else if (mediaError.name === 'NotFoundError') {
+            throw new Error('No se encontró ninguna cámara. Verifica que tengas una cámara conectada.');
+          } else if (mediaError.name === 'NotSupportedError') {
+            throw new Error('Tu navegador no soporta acceso a la cámara. Necesitas usar HTTPS.');
+          } else {
+            throw new Error(`Error de cámara: ${mediaError.message}`);
+          }
+        }
       }
 
       // Wait for video to be ready
@@ -796,6 +820,14 @@ if (permissionDenied) {
         <VideoCameraIcon className="h-8 w-8 mx-auto text-orange-400 mb-2" />
         <p className="text-sm text-orange-600 font-medium">Permiso de cámara denegado</p>
         <p className="text-xs text-gray-500 mt-1">Por favor permite el acceso a la cámara en tu navegador</p>
+        
+        {/* Información sobre HTTPS */}
+        {window.location.protocol !== 'https:' && window.location.hostname !== 'localhost' && (
+          <div className="mt-3 p-2 bg-blue-50 border border-blue-200 rounded text-xs text-blue-700">
+            <p className="font-medium">💡 Nota: Necesitas HTTPS para usar la cámara</p>
+            <p>Los navegadores requieren una conexión segura para acceder a la cámara en sitios remotos.</p>
+          </div>
+        )}
       </div>
     </div>
   );
