@@ -162,8 +162,13 @@ export function VideoPlayerWithDetection({
           return;
         }
         
-        // Connect to inference WebSocket with camera URL
-        const wsUrl = `ws://54.86.67.166:8001/stream/ws/camera/${deviceId}?camera_url=${encodeURIComponent(rtspUrl)}`;
+        // Connect to inference WebSocket with camera URL through NGINX proxy
+        const mlServiceUrl = process.env.NEXT_PUBLIC_ML_SERVICE_URL || 'https://54.86.67.166/ml';
+        const wsProtocol = mlServiceUrl.startsWith('https') ? 'wss' : 'ws';
+        const wsBaseUrl = mlServiceUrl.replace(/^https?:\/\//, '').replace(/\/ml$/, '');
+        const wsUrl = `${wsProtocol}://${wsBaseUrl}/ml/stream/ws/camera/${deviceId}?camera_url=${encodeURIComponent(rtspUrl)}`;
+        
+        console.log('🔗 Connecting to WebSocket:', wsUrl);
         
         const ws = new WebSocket(wsUrl);
         wsRef.current = ws;

@@ -3,6 +3,22 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { ExclamationTriangleIcon, ArrowsPointingOutIcon, VideoCameraIcon } from '@heroicons/react/24/outline';
 
+// Helper function to check if camera access is available
+const checkCameraAvailability = () => {
+  const isHttps = window.location.protocol === 'https:';
+  const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+  const hasMediaDevices = !!navigator.mediaDevices;
+  const hasGetUserMedia = !!(navigator.mediaDevices?.getUserMedia);
+  
+  return {
+    isHttps,
+    isLocalhost,
+    hasMediaDevices,
+    hasGetUserMedia,
+    canAccess: hasMediaDevices && hasGetUserMedia && (isHttps || isLocalhost)
+  };
+};
+
 interface Detection {
   bbox: {
     x: number;
@@ -33,6 +49,7 @@ export function LocalWebcamDetection({
   const [detectionCount, setDetectionCount] = useState(0);
   const [permissionDenied, setPermissionDenied] = useState(false);
   const [processingFps, setProcessingFps] = useState(0);
+  const [httpsRequired, setHttpsRequired] = useState(false);
 
   // Infraction config
   const [simulateInfractions, setSimulateInfractions] = useState(true);
@@ -337,8 +354,26 @@ export function LocalWebcamDetection({
     setLoading(true);
     setError(false);
     setPermissionDenied(false);
+    setHttpsRequired(false);
 
     try {
+      // Check camera availability first if using webcam
+      if (!useVideoFile) {
+        const cameraCheck = checkCameraAvailability();
+        console.log('📷 Camera availability check:', cameraCheck);
+        
+        if (!cameraCheck.canAccess) {
+          if (!cameraCheck.isHttps && !cameraCheck.isLocalhost) {
+            setHttpsRequired(true);
+            throw new Error('Para acceder a la cámara necesitas usar HTTPS. Accede a: https://' + window.location.host);
+          } else if (!cameraCheck.hasMediaDevices) {
+            throw new Error('Tu navegador no soporta acceso a la cámara. Prueba con Chrome, Firefox o Safari actualizado.');
+          } else if (!cameraCheck.hasGetUserMedia) {
+            throw new Error('La API getUserMedia no está disponible en tu navegador.');
+          }
+        }
+      }
+
       // CRITICAL: Wait for video element to be ready BEFORE starting WebSocket
       if (!videoRef.current) {
         console.error('❌ Video ref not available');
@@ -366,9 +401,16 @@ export function LocalWebcamDetection({
         // Use webcam
         console.log('📷 Requesting webcam access...');
         
-        // Verificar compatibilidad del navegador
+        // Verificar compatibilidad del navegador y protocolo
         if (!navigator.mediaDevices) {
-          throw new Error('Tu navegador no soporta acceso a la cámara. Necesitas usar HTTPS o un navegador compatible.');
+          const isHttps = window.location.protocol === 'https:';
+          const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+          
+          if (!isHttps && !isLocalhost) {
+            throw new Error('Para acceder a la cámara necesitas usar HTTPS. Por favor, accede a la aplicación mediante https:// en lugar de http://');
+          } else {
+            throw new Error('Tu navegador no soporta acceso a la cámara. Prueba con Chrome, Firefox o Safari actualizado.');
+          }
         }
 
         if (!navigator.mediaDevices.getUserMedia) {
@@ -902,7 +944,46 @@ if (permissionDenied) {
   );
 }
 
-if (error) {
+  // Show HTTPS requirement error
+  if (httpsRequired) {
+    const httpsUrl = `https://${window.location.host}${window.location.pathname}`;
+    
+    return (
+      <div className={`bg-yellow-50 border border-yellow-200 rounded-md flex items-center justify-center ${className}`}>
+        <div className="text-center p-6">
+          <ExclamationTriangleIcon className="h-12 w-12 mx-auto text-yellow-500 mb-3" />
+          <p className="text-sm text-yellow-800 font-medium mb-2">🔒 HTTPS Requerido</p>
+          <p className="text-xs text-yellow-700 mb-4">
+            Para acceder a la cámara necesitas usar una conexión segura HTTPS.
+          </p>
+          
+          <div className="bg-white border border-yellow-300 rounded-md p-3 mb-4">
+            <p className="text-xs text-gray-600 mb-2">Accede a la versión segura:</p>
+            <div className="bg-gray-100 p-2 rounded text-xs font-mono text-gray-800 break-all">
+              {httpsUrl}
+            </div>
+          </div>
+
+          <div className="flex gap-2 justify-center">
+            <a
+              href={httpsUrl}
+              className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-md text-sm inline-block"
+            >
+              🔒 Ir a HTTPS
+            </a>
+            <button
+              onClick={() => setUseVideoFile(true)}
+              className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md text-sm"
+            >
+              📹 Usar archivo de video
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
   return (
     <div className={`bg-gray-100 rounded-md flex items-center justify-center ${className}`}>
       <div className="text-center p-6">
