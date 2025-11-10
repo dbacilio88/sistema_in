@@ -176,6 +176,9 @@ services:
       DJANGO_API_URL: http://django:8000
       INFERENCE_DEVICE: ${INFERENCE_DEVICE:-cpu}
       GPU_DEVICE_ID: ${GPU_DEVICE_ID:-0}
+      # Ultralytics/YOLO configuration
+      YOLO_CONFIG_DIR: /home/app/.ultralytics
+      TORCH_HOME: /home/app/.torch
     ports:
       - "8001:8001"
     volumes:

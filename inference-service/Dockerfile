@@ -42,9 +42,13 @@ COPY app/ ./app/
 # Create non-root user for security
 RUN useradd --create-home --shell /bin/bash app && \
     mkdir -p /app/models && \
+    mkdir -p /app/downloads && \
     mkdir -p /home/app/.EasyOCR/model && \
+    mkdir -p /home/app/.ultralytics && \
     chown -R app:app /app && \
-    chown -R app:app /home/app/.EasyOCR
+    chown -R app:app /home/app && \
+    chmod -R 755 /app && \
+    chmod -R 755 /home/app
 USER app
 
 # Expose port
