@@ -61,7 +61,7 @@ services:
       - django
       - inference
     networks:
-      - traffic_network
+      - traffic-network
     restart: unless-stopped
     environment:
       - NGINX_ENVSUBST_TEMPLATE_DIR=/etc/nginx/templates
