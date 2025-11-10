@@ -1,5 +1,7 @@
 import os
+import json
 from typing import Optional, List
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -56,6 +58,17 @@ class Settings(BaseSettings):
     YOLO_IOU_THRESHOLD: float = 0.45
     OCR_LANGUAGES: List[str] = ['en']  # English for alphanumeric plates
     OCR_GPU: bool = False
+    
+    @field_validator('OCR_LANGUAGES', mode='before')
+    @classmethod
+    def validate_ocr_languages(cls, v):
+        if isinstance(v, str):
+            try:
+                return json.loads(v)
+            except json.JSONDecodeError:
+                # If it's not valid JSON, treat as single language
+                return [v]
+        return v
     
     # Django Backend API
     DJANGO_API_URL: str = os.getenv("DJANGO_API_URL", "http://localhost:8000")
