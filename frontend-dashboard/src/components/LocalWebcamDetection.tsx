@@ -456,9 +456,9 @@ export function LocalWebcamDetection({
       // Si tenemos NEXT_PUBLIC_WS_INFERENCE_URL, no agregamos ruta adicional
       let wsUrl: string;
       if (process.env.NEXT_PUBLIC_WS_INFERENCE_URL) {
-        wsUrl = inferenceWsUrl; // Ya incluye /api/ws/inference
+        wsUrl = inferenceWsUrl; // Ya incluye /api/v1/ws/inference
       } else {
-        wsUrl = `${inferenceWsUrl}/api/ws/inference`; // Usar la ruta correcta del servicio
+        wsUrl = `${inferenceWsUrl}/api/v1/ws/inference`; // Usar la ruta correcta del servicio
       }
 
       console.log('🔌 Connecting to WebSocket:', wsUrl);
