@@ -102,8 +102,8 @@ urlpatterns = [
     path('api/ml/', include('ml_models.urls')),
 ]
 
-# Serve static and media files in development
-if settings.DEBUG:
+# Serve static and media files - always in AWS environment
+if settings.DEBUG or not settings.DEBUG:  # Always serve static files in our deployment
     urlpatterns += static(settings.STATIC_URL, document_root=settings.STATIC_ROOT)
     urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
 

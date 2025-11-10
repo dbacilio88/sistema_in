@@ -278,6 +278,20 @@ CORS_ALLOW_HEADERS = [
     'x-requested-with',
 ]
 
+# Security settings for AWS deployment
+if not DEBUG:
+    # Para desarrollo en AWS sin HTTPS, relajar algunas políticas de seguridad
+    SECURE_CROSS_ORIGIN_OPENER_POLICY = None
+    SECURE_REFERRER_POLICY = None
+    
+# Static files serving
+STATICFILES_STORAGE = 'django.contrib.staticfiles.storage.StaticFilesStorage'
+
+# Ensure static files are collected properly
+import os
+if not os.path.exists(STATIC_ROOT):
+    os.makedirs(STATIC_ROOT, exist_ok=True)
+
 # DRF Spectacular (OpenAPI) Configuration
 SPECTACULAR_SETTINGS = {
     'TITLE': 'Traffic Infraction Detection API',
