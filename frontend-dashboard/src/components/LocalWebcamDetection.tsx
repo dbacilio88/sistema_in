@@ -432,10 +432,49 @@ export function LocalWebcamDetection({
       console.log('✅ Both refs ready - video:', !!videoRef.current, 'canvas:', !!canvasRef.current);
 
       // NOW connect to inference WebSocket
-      const inferenceWsUrl = process.env.NEXT_PUBLIC_INFERENCE_WS || 'ws://localhost:8001';
+      // Detectar automáticamente la URL base según el entorno
+      let inferenceWsUrl = 'ws://localhost:8001';
+      
+      // Si estamos en el navegador, usar la misma lógica que en api.ts
+      if (typeof window !== 'undefined') {
+        // Si hay una variable de entorno específica para WS, usarla
+        if (process.env.NEXT_PUBLIC_WS_INFERENCE_URL) {
+          inferenceWsUrl = process.env.NEXT_PUBLIC_WS_INFERENCE_URL;
+        }
+        // Si no, construir desde la variable de ML_SERVICE_URL
+        else if (process.env.NEXT_PUBLIC_ML_SERVICE_URL) {
+          const mlUrl = process.env.NEXT_PUBLIC_ML_SERVICE_URL;
+          inferenceWsUrl = mlUrl.replace('http://', 'ws://').replace('https://', 'wss://');
+        }
+        // Como último recurso, detectar desde window.location
+        else if (window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
+          // Estamos en AWS, usar la IP del hostname actual
+          inferenceWsUrl = `ws://${window.location.hostname}:8001`;
+        }
+      }
+      
       const wsUrl = `${inferenceWsUrl}/api/ws/inference`;
 
-      console.log('Connecting to WebSocket:', wsUrl);
+      console.log('🔌 Connecting to WebSocket:', wsUrl);
+      console.log('🌐 Detected environment:', {
+        hostname: typeof window !== 'undefined' ? window.location.hostname : 'SSR',
+        protocol: typeof window !== 'undefined' ? window.location.protocol : 'SSR',
+        NEXT_PUBLIC_ML_SERVICE_URL: process.env.NEXT_PUBLIC_ML_SERVICE_URL,
+        NEXT_PUBLIC_WS_INFERENCE_URL: process.env.NEXT_PUBLIC_WS_INFERENCE_URL,
+        finalWsUrl: wsUrl
+      });
+
+      // Test the HTTP endpoint first (debugging)
+      try {
+        const testUrl = inferenceWsUrl.replace('ws://', 'http://');
+        console.log('🧪 Testing HTTP endpoint first:', `${testUrl}/api/v1/health`);
+        const testResponse = await fetch(`${testUrl}/api/v1/health`);
+        console.log('✅ HTTP endpoint test result:', testResponse.status, testResponse.statusText);
+      } catch (testError) {
+        console.error('❌ HTTP endpoint test failed:', testError);
+        const testUrl = inferenceWsUrl.replace('ws://', 'http://');
+        console.log('💡 Inference service may not be running on:', testUrl);
+      }
 
       const ws = new WebSocket(wsUrl);
       wsRef.current = ws;
