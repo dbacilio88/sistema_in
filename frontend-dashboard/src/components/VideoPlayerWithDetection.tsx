@@ -166,7 +166,7 @@ export function VideoPlayerWithDetection({
         const mlServiceUrl = process.env.NEXT_PUBLIC_ML_SERVICE_URL || 'https://54.86.67.166/ml';
         const wsProtocol = mlServiceUrl.startsWith('https') ? 'wss' : 'ws';
         const wsBaseUrl = mlServiceUrl.replace(/^https?:\/\//, '').replace(/\/ml$/, '');
-        const wsUrl = `${wsProtocol}://${wsBaseUrl}/ml/stream/ws/camera/${deviceId}?camera_url=${encodeURIComponent(rtspUrl)}`;
+        const wsUrl = `${wsProtocol}://${wsBaseUrl}:8001/api/v1/ws/camera/${deviceId}?camera_url=${encodeURIComponent(rtspUrl)}`;
         
         console.log('🔗 Connecting to WebSocket:', wsUrl);
         

@@ -748,6 +748,62 @@ export function LocalWebcamDetection({
             };
             img.src = `data:image/jpeg;base64,${data.frame}`;
           }
+        } else if (canvasRef.current && videoRef.current) {
+          // FALLBACK: Draw original video frame if no processed frame received
+          const canvas = canvasRef.current;
+          const ctx = canvas.getContext('2d');
+          const video = videoRef.current;
+
+          if (ctx && video.videoWidth > 0 && video.videoHeight > 0) {
+            // Set canvas size to match video
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            
+            // Draw original video frame
+            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+            
+            // Draw detection boxes manually if we have detections
+            if (data.detections && data.detections.length > 0) {
+              data.detections.forEach((detection: any) => {
+                if (detection.bbox) {
+                  const [x, y, width, height] = detection.bbox;
+                  
+                  // Draw bounding box
+                  ctx.strokeStyle = detection.has_infraction ? '#FF0000' : '#00FF00';
+                  ctx.lineWidth = 2;
+                  ctx.strokeRect(x, y, width, height);
+                  
+                  // Draw label
+                  const label = `${detection.vehicle_type || 'Vehicle'} (${(detection.confidence * 100).toFixed(1)}%)`;
+                  ctx.fillStyle = detection.has_infraction ? '#FF0000' : '#00FF00';
+                  ctx.font = 'bold 12px Arial';
+                  ctx.fillText(label, x, y - 5);
+                  
+                  if (detection.license_plate) {
+                    ctx.fillText(`Plate: ${detection.license_plate}`, x, y + height + 15);
+                  }
+                }
+              });
+            }
+            
+            // Draw stop line if traffic light detection is enabled
+            if (enableTrafficLight && stopLineY) {
+              ctx.strokeStyle = '#FF0000';
+              ctx.lineWidth = 3;
+              ctx.setLineDash([10, 5]);
+              ctx.beginPath();
+              ctx.moveTo(0, stopLineY);
+              ctx.lineTo(canvas.width, stopLineY);
+              ctx.stroke();
+              ctx.setLineDash([]);
+              
+              ctx.fillStyle = '#FF0000';
+              ctx.font = 'bold 14px Arial';
+              ctx.fillText(`STOP LINE (Y=${stopLineY})`, 10, stopLineY - 10);
+            }
+            
+            console.log('🎨 Drew original video frame with detections on canvas:', canvas.width, 'x', canvas.height);
+          }
         }
 
         // Store detections for stats
