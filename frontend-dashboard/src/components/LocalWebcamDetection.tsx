@@ -453,7 +453,13 @@ export function LocalWebcamDetection({
         }
       }
       
-      const wsUrl = `${inferenceWsUrl}/api/ws/inference`;
+      // Si tenemos NEXT_PUBLIC_WS_INFERENCE_URL, no agregamos ruta adicional
+      let wsUrl: string;
+      if (process.env.NEXT_PUBLIC_WS_INFERENCE_URL) {
+        wsUrl = inferenceWsUrl; // Ya incluye /api/ws/inference
+      } else {
+        wsUrl = `${inferenceWsUrl}/api/ws/inference`;
+      }
 
       console.log('🔌 Connecting to WebSocket:', wsUrl);
       console.log('🌐 Detected environment:', {
@@ -466,13 +472,20 @@ export function LocalWebcamDetection({
 
       // Test the HTTP endpoint first (debugging)
       try {
-        const testUrl = inferenceWsUrl.replace('ws://', 'http://');
+        let testUrl = inferenceWsUrl.replace('ws://', 'http://');
+        // Si la URL ya incluye /api/ws/inference, removerla para la prueba HTTP
+        if (testUrl.includes('/api/ws/inference')) {
+          testUrl = testUrl.replace('/api/ws/inference', '');
+        }
         console.log('🧪 Testing HTTP endpoint first:', `${testUrl}/api/v1/health`);
         const testResponse = await fetch(`${testUrl}/api/v1/health`);
         console.log('✅ HTTP endpoint test result:', testResponse.status, testResponse.statusText);
       } catch (testError) {
         console.error('❌ HTTP endpoint test failed:', testError);
-        const testUrl = inferenceWsUrl.replace('ws://', 'http://');
+        let testUrl = inferenceWsUrl.replace('ws://', 'http://');
+        if (testUrl.includes('/api/ws/inference')) {
+          testUrl = testUrl.replace('/api/ws/inference', '');
+        }
         console.log('💡 Inference service may not be running on:', testUrl);
       }
 
