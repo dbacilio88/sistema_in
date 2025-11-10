@@ -65,42 +65,41 @@ echo "Container status:"
 docker-compose ps
 EOF
 
-# Create SSL deployment script
-cat > /opt/sistema-in/deploy-ssl.sh << 'EOF'
+# Create AWS deployment script
+cat > /opt/sistema-in/deploy-aws.sh << 'EOF'
 #!/bin/bash
 set -e
-echo "Starting SSL deployment..."
+echo "🚀 Desplegando Sistema IN en AWS..."
+
+# Obtener IP pública
+PUBLIC_IP=$(curl -s http://169.254.169.254/latest/meta-data/public-ipv4 2>/dev/null || echo "localhost")
+echo "🌐 IP Pública: $PUBLIC_IP"
+
+export PUBLIC_IP=$PUBLIC_IP
 cd /opt/sistema-in
 
-# Check if SSL files exist
-if [ ! -f "docker-compose.ssl.yml" ]; then
-    echo "❌ SSL configuration not found. Please run setup-ssl.sh first"
-    exit 1
-fi
-
 if [ -d ".git" ]; then
-    echo "Pulling latest changes..."
-    git pull || echo "Could not pull from git"
+    echo "📥 Actualizando código..."
+    git pull || echo "⚠️ No se pudo actualizar"
 fi
 
-echo "Stopping existing containers..."
-docker-compose -f docker-compose.yml -f docker-compose.ssl.yml down || true
+echo "⏹️ Deteniendo servicios..."
+docker-compose -f docker-compose.yml -f docker-compose.aws.yml down || true
 
-echo "Building and starting containers with SSL..."
-docker-compose -f docker-compose.yml -f docker-compose.ssl.yml up -d --build
+echo "🔨 Construyendo..."
+docker-compose -f docker-compose.yml -f docker-compose.aws.yml build
 
-echo "SSL Deployment completed!"
-echo "Container status:"
-docker-compose -f docker-compose.yml -f docker-compose.ssl.yml ps
+echo "🚀 Iniciando servicios..."
+docker-compose -f docker-compose.yml -f docker-compose.aws.yml up -d
 
-echo ""
-echo "🌐 Your application is now available at:"
-echo "   https://your-domain.com (change your-domain.com to your actual domain)"
+echo "✅ Deployment completado!"
+echo "🌐 Frontend: http://$PUBLIC_IP:3002"
+echo "🔧 Backend:  http://$PUBLIC_IP:8000"
 EOF
 
 chmod +x /opt/sistema-in/deploy.sh
-chmod +x /opt/sistema-in/deploy-ssl.sh
+chmod +x /opt/sistema-in/deploy-aws.sh
 chown ec2-user:ec2-user /opt/sistema-in/deploy.sh
-chown ec2-user:ec2-user /opt/sistema-in/deploy-ssl.sh
+chown ec2-user:ec2-user /opt/sistema-in/deploy-aws.sh
 
 echo "User-data script completed successfully at $(date)"
