@@ -20,7 +20,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # Initialize environment variables
 env = environ.Env(
     DEBUG=(bool, False),
-    ALLOWED_HOSTS=(list, ['localhost', '127.0.0.1', '172.30.107.23', '54.86.67.166']),
+    ALLOWED_HOSTS=(list, ['localhost', '127.0.0.1', '0.0.0.0', '*']),
 )
 
 # Read .env file if it exists
@@ -223,11 +223,45 @@ CORS_ALLOWED_ORIGINS = env.list(
         'http://localhost:3000', 
         'http://localhost:3002', 
         'http://localhost:8000',
-        'http://172.30.107.23:3002',
-        'http://172.30.107.23:3000',
-        'http://172.30.107.23:8000',
+        'http://127.0.0.1:3000',
+        'http://127.0.0.1:3002',
+        'http://127.0.0.1:8000',
     ]
 )
+
+# Add dynamic CORS origins based on current host
+import socket
+try:
+    # Get current IP address
+    hostname = socket.gethostname()
+    local_ip = socket.gethostbyname(hostname)
+    
+    # Add local IP to CORS origins
+    dynamic_origins = [
+        f'http://{local_ip}:3000',
+        f'http://{local_ip}:3002',
+        f'http://{local_ip}:8000',
+    ]
+    
+    # Add EC2 public IP if available
+    try:
+        import urllib.request
+        public_ip = urllib.request.urlopen('http://169.254.169.254/latest/meta-data/public-ipv4', timeout=2).read().decode()
+        dynamic_origins.extend([
+            f'http://{public_ip}:3000',
+            f'http://{public_ip}:3002', 
+            f'http://{public_ip}:8000',
+        ])
+    except:
+        pass
+    
+    CORS_ALLOWED_ORIGINS.extend(dynamic_origins)
+except:
+    pass
+
+# Allow all origins in development
+if DEBUG:
+    CORS_ALLOW_ALL_ORIGINS = True
 CORS_ALLOW_CREDENTIALS = True
 CORS_ALLOW_HEADERS = [
     'accept',
