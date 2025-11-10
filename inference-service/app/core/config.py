@@ -1,5 +1,5 @@
 import os
-from typing import Optional
+from typing import Optional, List
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -54,7 +54,7 @@ class Settings(BaseSettings):
     YOLO_MODEL_PATH: str = "/app/models/yolov8n.pt"
     YOLO_CONFIDENCE_THRESHOLD: float = 0.5
     YOLO_IOU_THRESHOLD: float = 0.45
-    OCR_LANGUAGES: list = ['en']  # English for alphanumeric plates
+    OCR_LANGUAGES: List[str] = ['en']  # English for alphanumeric plates
     OCR_GPU: bool = False
     
     # Django Backend API
