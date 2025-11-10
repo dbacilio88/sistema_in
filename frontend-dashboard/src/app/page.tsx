@@ -9,6 +9,7 @@ import { DashboardHeader } from '@/components/DashboardHeader';
 import { Sidebar } from '@/components/Sidebar';
 import { Settings } from '@/components/Settings';
 import { RealtimeMonitor } from '@/components/RealtimeMonitorView';
+import { apiService } from '@/services/api';
 
 export default function Dashboard() {
   const [activeTab, setActiveTab] = useState('overview');
@@ -28,8 +29,9 @@ export default function Dashboard() {
 
   const checkConnection = async () => {
     try {
-      const response = await fetch('http://localhost:8000/api/health/');
-      setIsConnected(response.ok);
+      // Usar el método healthCheck del apiService que maneja automáticamente las variables de entorno
+      const isHealthy = await apiService.healthCheck();
+      setIsConnected(isHealthy);
     } catch (error) {
       setIsConnected(false);
     }

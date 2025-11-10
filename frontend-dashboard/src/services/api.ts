@@ -273,6 +273,17 @@ class ApiService {
       method: 'POST',
     });
   }
+
+  // Health check endpoint
+  async healthCheck(): Promise<boolean> {
+    try {
+      const response = await fetch(`${this.baseURL}/api/health/`);
+      return response.ok;
+    } catch (error) {
+      console.error('Health check failed:', error);
+      return false;
+    }
+  }
 }
 
 export const apiService = new ApiService();
