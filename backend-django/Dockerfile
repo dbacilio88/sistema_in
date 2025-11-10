@@ -28,10 +28,14 @@ COPY requirements.txt .
 RUN pip install --upgrade pip && \
     pip install -r requirements.txt
 
+# Copy entrypoint script first and make it executable
+COPY entrypoint.sh /app/
+RUN chmod +x /app/entrypoint.sh
+
 # Copy project
 COPY . .
 
-# Make entrypoint executable
+# Make sure entrypoint is still executable after copy
 RUN chmod +x /app/entrypoint.sh
 
 # Create logs directory
@@ -42,4 +46,5 @@ RUN python manage.py collectstatic --noinput || true
 
 EXPOSE 8000
 
-ENTRYPOINT ["/app/entrypoint.sh"]
+# Use shell form to ensure proper execution
+CMD ["/bin/bash", "/app/entrypoint.sh"]

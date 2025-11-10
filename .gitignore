@@ -108,3 +108,23 @@ node_modules/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+
+# Terraform
+terraform/terraform.tfvars
+terraform/.terraform/
+terraform/.terraform.lock.hcl
+terraform/terraform.tfstate
+terraform/terraform.tfstate.backup
+terraform/*.tfplan
+
+# AWS
+.aws/
+aws-credentials.json
+
+# Secrets and credentials
+*.pem
+*.key
+.env.local
+.env.production
+secrets/
+credentials/

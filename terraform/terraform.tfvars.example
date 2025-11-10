@@ -1,0 +1,24 @@
+# Example Terraform variables file
+# Copy this file to terraform.tfvars and modify as needed
+
+# Project Configuration
+project_name = "sistema-in"
+environment  = "dev"
+aws_region   = "us-east-1"
+
+# VPC Configuration
+vpc_cidr = "10.0.0.0/16"
+
+# EC2 Configuration
+instance_type = "t3.xlarge"  # 4 vCPUs, 16 GB RAM - good for running all services
+volume_size   = 50           # GB - sufficient for Docker images and data
+
+# Optional: EC2 Key Pair for SSH access
+# Create a key pair in AWS Console first: https://console.aws.amazon.com/ec2/home#KeyPairs
+# key_name = "my-sistema-in-key"
+
+# AWS Credentials (opcional - se puede usar AWS CLI profile en su lugar)
+# aws_access_key_id     = "AKIA..."
+# aws_secret_access_key = "your-secret-key"
+
+# If you don't specify a key_name, you can still access the instance using AWS Systems Manager Session Manager

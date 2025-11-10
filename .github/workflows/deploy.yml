@@ -1,0 +1,173 @@
+name: Deploy to AWS EC2
+
+on:
+  push:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+env:
+  AWS_REGION: us-east-1
+
+jobs:
+  deploy:
+    name: Deploy to EC2
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ env.AWS_REGION }}
+
+    - name: Get EC2 instance info
+      id: ec2-info
+      run: |
+        # Get instance ID and IP from Terraform state or AWS CLI
+        INSTANCE_ID=$(aws ec2 describe-instances \
+          --filters "Name=tag:Project,Values=sistema-in" \
+                    "Name=tag:Environment,Values=dev" \
+                    "Name=instance-state-name,Values=running" \
+          --query 'Reservations[0].Instances[0].InstanceId' \
+          --output text)
+        
+        INSTANCE_IP=$(aws ec2 describe-instances \
+          --instance-ids $INSTANCE_ID \
+          --query 'Reservations[0].Instances[0].PublicIpAddress' \
+          --output text)
+        
+        echo "instance-id=$INSTANCE_ID" >> $GITHUB_OUTPUT
+        echo "instance-ip=$INSTANCE_IP" >> $GITHUB_OUTPUT
+        
+        echo "Found instance: $INSTANCE_ID at $INSTANCE_IP"
+
+    - name: Deploy to EC2
+      run: |
+        # Create deployment script
+        cat > deploy-script.sh << 'EOF'
+        #!/bin/bash
+        set -e
+        
+        echo "🚀 Starting deployment..."
+        
+        # Navigate to application directory
+        cd /opt/sistema-in
+        
+        # Pull latest code
+        if [ -d ".git" ]; then
+          echo "📥 Pulling latest code..."
+          git pull origin main || git pull origin master || echo "⚠️ Could not pull from git"
+        else
+          echo "📁 Cloning repository..."
+          rm -rf * .*  2>/dev/null || true
+          git clone https://github.com/${{ github.repository }}.git .
+        fi
+        
+        # Stop services
+        echo "🛑 Stopping services..."
+        docker-compose down || true
+        
+        # Build and start services
+        echo "🔨 Building and starting services..."
+        docker-compose build
+        docker-compose up -d
+        
+        # Wait for services
+        echo "⏳ Waiting for services to start..."
+        sleep 60
+        
+        # Health check
+        echo "🏥 Checking service health..."
+        for i in {1..10}; do
+          if curl -f http://localhost:8000/api/health/ >/dev/null 2>&1; then
+            echo "✅ Django API is healthy"
+            break
+          fi
+          echo "⏳ Waiting for Django API... ($i/10)"
+          sleep 10
+        done
+        
+        for i in {1..10}; do
+          if curl -f http://localhost:8001/api/v1/health >/dev/null 2>&1; then
+            echo "✅ Inference Service is healthy"
+            break
+          fi
+          echo "⏳ Waiting for Inference Service... ($i/10)"
+          sleep 10
+        done
+        
+        echo "🎉 Deployment completed successfully!"
+        echo ""
+        echo "🌐 Application URLs:"
+        echo "  Frontend: http://$(curl -s http://169.254.169.254/latest/meta-data/public-ipv4):3002"
+        echo "  Django API: http://$(curl -s http://169.254.169.254/latest/meta-data/public-ipv4):8000"
+        echo "  Django Admin: http://$(curl -s http://169.254.169.254/latest/meta-data/public-ipv4):8000/admin/"
+        EOF
+        
+        # Copy script to EC2 and execute
+        aws ssm send-command \
+          --instance-ids "${{ steps.ec2-info.outputs.instance-id }}" \
+          --document-name "AWS-RunShellScript" \
+          --parameters 'commands=["bash -s"]' \
+          --cli-input-json '{
+            "Parameters": {
+              "commands": [
+                "cat > /tmp/deploy-script.sh",
+                "chmod +x /tmp/deploy-script.sh",
+                "sudo -u ec2-user /tmp/deploy-script.sh"
+              ]
+            }
+          }' < deploy-script.sh \
+          --output table
+
+    - name: Wait for deployment
+      run: |
+        echo "⏳ Waiting for deployment to complete..."
+        sleep 120
+        
+        # Check if services are responding
+        INSTANCE_IP="${{ steps.ec2-info.outputs.instance-ip }}"
+        
+        echo "🏥 Final health check..."
+        
+        # Check Django API
+        if curl -f "http://$INSTANCE_IP:8000/api/health/" >/dev/null 2>&1; then
+          echo "✅ Django API is accessible at http://$INSTANCE_IP:8000"
+        else
+          echo "⚠️ Django API not responding"
+        fi
+        
+        # Check Inference API  
+        if curl -f "http://$INSTANCE_IP:8001/api/v1/health" >/dev/null 2>&1; then
+          echo "✅ Inference API is accessible at http://$INSTANCE_IP:8001"
+        else
+          echo "⚠️ Inference API not responding"
+        fi
+        
+        # Check Frontend
+        if curl -f "http://$INSTANCE_IP:3002" >/dev/null 2>&1; then
+          echo "✅ Frontend is accessible at http://$INSTANCE_IP:3002"
+        else
+          echo "⚠️ Frontend not responding"
+        fi
+
+    - name: Notify deployment status
+      if: always()
+      run: |
+        INSTANCE_IP="${{ steps.ec2-info.outputs.instance-ip }}"
+        
+        echo "📊 Deployment Summary"
+        echo "===================="
+        echo "Instance IP: $INSTANCE_IP"
+        echo "Frontend: http://$INSTANCE_IP:3002"
+        echo "Django API: http://$INSTANCE_IP:8000"
+        echo "Django Admin: http://$INSTANCE_IP:8000/admin/"
+        echo "Inference API: http://$INSTANCE_IP:8001"
+        echo "RabbitMQ Management: http://$INSTANCE_IP:15672"
+        echo "MinIO Console: http://$INSTANCE_IP:9001"
+        echo "Grafana: http://$INSTANCE_IP:3001"
+        echo "Prometheus: http://$INSTANCE_IP:9090"
