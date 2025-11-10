@@ -23,8 +23,11 @@ env = environ.Env(
     ALLOWED_HOSTS=(list, ['localhost', '127.0.0.1', '0.0.0.0', '*']),
 )
 
-# Read .env file if it exists
-environ.Env.read_env(os.path.join(BASE_DIR.parent, '.env'))
+# Read .env file
+project_root = BASE_DIR.parent
+env_file = os.path.join(project_root, '.env')
+if os.path.exists(env_file):
+    environ.Env.read_env(env_file)
 
 # SECURITY WARNING: keep the secret key used in production secret!
 SECRET_KEY = env('DJANGO_SECRET_KEY', default='django-insecure-change-me-in-production')

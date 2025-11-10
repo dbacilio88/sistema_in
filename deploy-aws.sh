@@ -23,7 +23,7 @@ cat > .env.aws << EOF
 # AWS Environment Variables (generado automáticamente)
 DB_HOST=postgres
 DEBUG=False
-ALLOWED_HOSTS=localhost,127.0.0.1,0.0.0.0,django,$PUBLIC_IP
+ALLOWED_HOSTS=localhost,127.0.0.1,0.0.0.0,django,$PUBLIC_IP,*
 SECURE_SSL_REDIRECT=False
 
 # Frontend URLs (externas - para el navegador)
