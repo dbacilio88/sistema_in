@@ -187,6 +187,8 @@ services:
       - ./inference-service:/app
       - ml_models:/app/models
       - camera_calibrations:/app/calibration
+      # Mount pre-downloaded YOLO model to avoid permission issues
+      - /home/ec2-user/models/yolov8n.pt:/app/models/yolov8n.pt:ro
     depends_on:
       postgres:
         condition: service_healthy
