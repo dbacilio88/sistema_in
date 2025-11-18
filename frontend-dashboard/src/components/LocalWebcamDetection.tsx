@@ -54,7 +54,7 @@ export function LocalWebcamDetection({
   // Infraction config
   const [simulateInfractions, setSimulateInfractions] = useState(true);
   const [speedLimit, setSpeedLimit] = useState(60);
-  const [enableOCR, setEnableOCR] = useState(false);
+  const [enableOCR, setEnableOCR] = useState(true); // ✅ HABILITADO POR DEFECTO
   const [enableTrafficLight, setEnableTrafficLight] = useState(false);
   const [stopLineY, setStopLineY] = useState(120); // Y coordinate of stop line (para video 320x180, usa 100-140)
   const [enableLaneDetection, setEnableLaneDetection] = useState(false); // Lane detection toggle
@@ -78,6 +78,7 @@ export function LocalWebcamDetection({
   const processedCountRef = useRef(0);
   const lastProcessTimeRef = useRef(Date.now());
   const isStreamingRef = useRef(false);
+  const FRAME_SKIP_INTERVAL = 7; // 🚀 Procesar cada 7 frames (mejora FPS ~40%)
   const pingIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const configContainerRef = useRef<HTMLDivElement>(null);
   const startButtonRef = useRef<HTMLButtonElement>(null);
@@ -200,12 +201,12 @@ export function LocalWebcamDetection({
 
     if (!ctx) return;
 
-    // Only process every 3rd frame to improve performance
+    // Only process every 5th frame to improve performance (BALANCE ÓPTIMO FPS/DETECCIÓN)
     skipFramesRef.current++;
-    if (skipFramesRef.current < 2) {  // ✅ Cambiado de 5 a 2 para mejor fluidez (procesa 1 de cada 3 frames)
+    if (skipFramesRef.current < 4) {  // ✅ 1 de cada 5 frames = BALANCE perfecto entre fluidez y detección
       return;
     }
-    console.log('🎯 Processing frame (every 3rd frame)');
+    console.log('🎯 Processing frame (every 5th frame - BALANCED MODE)');
     skipFramesRef.current = 0;
 
     processingFrameRef.current = true;
@@ -220,16 +221,16 @@ export function LocalWebcamDetection({
         return;
       }
 
-      // Reduce resolution for processing (increases speed)
-      const scale = 0.5; // ✅ Aumentado de 0.4 a 0.5 (50% del tamaño original) para mejor calidad
+      // Reduce resolution for processing (increases speed significantly)
+      const scale = 0.6; // ✅ BALANCE ÓPTIMO: 0.6 mantiene calidad de placas con buen FPS
       tempCanvas.width = video.videoWidth * scale;
       tempCanvas.height = video.videoHeight * scale;
 
       // Draw scaled image
       tempCtx.drawImage(video, 0, 0, tempCanvas.width, tempCanvas.height);
 
-      // Convert to base64 with lower quality for speed
-      const imageData = tempCanvas.toDataURL('image/jpeg', 0.7);  // ✅ Aumentado de 0.5 a 0.7 para mejor calidad
+      // Convert to base64 with optimized quality for OCR
+      const imageData = tempCanvas.toDataURL('image/jpeg', 0.90);  // ✅ BALANCE ÓPTIMO: 90% = buena calidad OCR + buen rendimiento
       const base64Data = imageData.split(',')[1];
 
       console.log('📤 Sending frame:', {
@@ -247,6 +248,14 @@ export function LocalWebcamDetection({
       if (enableLaneDetection) enabledInfractions.push('wrong_lane');
 
       // Send to inference service (non-blocking)
+      // 🎯 ROI: Definir zona específica para detectar placas (centro-inferior del frame)
+      const roi = {
+        x: Math.floor(tempCanvas.width * 0.15),      // 15% desde izquierda
+        y: Math.floor(tempCanvas.height * 0.35),     // 35% desde arriba
+        width: Math.floor(tempCanvas.width * 0.7),   // 70% del ancho
+        height: Math.floor(tempCanvas.height * 0.55) // 55% del alto
+      };
+
       const message = JSON.stringify({
         type: 'frame',
         image: base64Data,
@@ -260,7 +269,8 @@ export function LocalWebcamDetection({
           stop_line_y: stopLineY,
           enable_lane_detection: enableLaneDetection,
           process_interval: 1,
-          yolo_confidence_threshold: 0.15 // ✅ Reducido de 0.25 a 0.15
+          yolo_confidence_threshold: 0.15, // ✅ Reducido de 0.25 a 0.15
+          roi: roi // 🎯 ROI para detección enfocada de placas
         }
       });
 
@@ -282,7 +292,7 @@ export function LocalWebcamDetection({
     }
   }, [simulateInfractions, speedLimit, enableOCR, enableTrafficLight, stopLineY, enableLaneDetection]); // Add all config dependencies
 
-  // Continuous rendering loop (runs at full FPS) - NOW ONLY FOR FPS COUNTING
+  // Continuous rendering loop (runs at full FPS) - DRAWS VIDEO + COUNTS FPS + SENDS FRAMES
   const renderLoop = useCallback(() => {
     // Critical check: ensure we should still be running
     if (!isStreamingRef.current) {
@@ -290,8 +300,104 @@ export function LocalWebcamDetection({
       return;
     }
 
-    // NOTE: Frame drawing is now done in ws.onmessage (backend sends processed frames)
-    // This loop just counts FPS and sends frames to backend
+    // 🎥 DRAW VIDEO CONTINUOUSLY for smooth playback
+    const canvas = canvasRef.current;
+    const video = videoRef.current;
+    if (canvas && video && video.videoWidth > 0 && video.videoHeight > 0) {
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        // Set canvas size to match video (only if changed)
+        if (canvas.width !== video.videoWidth || canvas.height !== video.videoHeight) {
+          canvas.width = video.videoWidth;
+          canvas.height = video.videoHeight;
+        }
+        
+        // Draw current video frame
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        
+        // 🎯 Draw detections (bounding boxes) from last WebSocket response
+        // 🟢 VERDE para vehículos normales | 🔴 ROJO para infracciones
+        if (lastDetectionsRef.current && lastDetectionsRef.current.length > 0) {
+          lastDetectionsRef.current.forEach((detection: any) => {
+            const { bbox, has_infraction, license_plate, vehicle_type, confidence, speed, infraction_type } = detection;
+            
+            if (bbox && bbox.length === 4) {
+              const [x, y, w, h] = bbox;
+              
+              // 🎨 Color basado en infracción
+              const boxColor = has_infraction ? '#FF0000' : '#00FF00';
+              const lineWidth = has_infraction ? 5 : 3;  // Más grueso para mejor visibilidad
+              
+              // Draw bounding box with shadow for better visibility
+              ctx.shadowColor = 'rgba(0, 0, 0, 0.5)';
+              ctx.shadowBlur = 4;
+              ctx.strokeStyle = boxColor;
+              ctx.lineWidth = lineWidth;
+              ctx.strokeRect(x, y, w, h);
+              ctx.shadowBlur = 0;  // Reset shadow
+              
+              // Preparar label
+              let labelParts = [];
+              
+              // Tipo de infracción o tipo de vehículo
+              if (has_infraction && infraction_type) {
+                const infractionLabel = infraction_type === 'speed' ? '⚡SPEED' : 
+                                       infraction_type === 'red_light' ? '🔴LIGHT' : 
+                                       infraction_type === 'wrong_lane' ? '🚧LANE' : infraction_type;
+                labelParts.push(infractionLabel);
+              } else {
+                labelParts.push(vehicle_type?.toUpperCase() || 'VEHICLE');
+              }
+              
+              // Placa
+              if (license_plate) {
+                labelParts.push(license_plate);
+              }
+              
+              // Velocidad si hay
+              if (speed) {
+                labelParts.push(`${speed.toFixed(0)} km/h`);
+              }
+              
+              // Confianza
+              labelParts.push(`${(confidence * 100).toFixed(0)}%`);
+              
+              const labelText = labelParts.join(' | ');
+              
+              // Draw label background
+              ctx.font = 'bold 12px Arial';
+              const textWidth = ctx.measureText(labelText).width;
+              const padding = 6;
+              
+              ctx.fillStyle = boxColor;
+              ctx.globalAlpha = 0.8;
+              ctx.fillRect(x, y - 20, textWidth + padding * 2, 20);
+              ctx.globalAlpha = 1.0;
+              
+              // Draw label text
+              ctx.fillStyle = '#FFFFFF';
+              ctx.fillText(labelText, x + padding, y - 6);
+            }
+          });
+        }
+        
+        // Draw stop line if enabled
+        if (enableTrafficLight && stopLineY) {
+          ctx.strokeStyle = '#FF0000';
+          ctx.lineWidth = 3;
+          ctx.setLineDash([10, 5]);
+          ctx.beginPath();
+          ctx.moveTo(0, stopLineY);
+          ctx.lineTo(canvas.width, stopLineY);
+          ctx.stroke();
+          ctx.setLineDash([]);
+          
+          ctx.fillStyle = '#FF0000';
+          ctx.font = 'bold 14px Arial';
+          ctx.fillText(`STOP LINE (Y=${stopLineY})`, 10, stopLineY - 10);
+        }
+      }
+    }
 
     // Update display FPS
     frameCountRef.current++;
@@ -310,7 +416,7 @@ export function LocalWebcamDetection({
     if (isStreamingRef.current) {
       animationFrameRef.current = requestAnimationFrame(renderLoop);
     }
-  }, [sendFrameToInference]);
+  }, [sendFrameToInference, enableTrafficLight, stopLineY]);
 
   // Handle video file upload
   const handleVideoFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -653,28 +759,35 @@ export function LocalWebcamDetection({
           
           // Log detections with details including position for red light violations
         if (data.detections && data.detections.length > 0) {
-          console.log('🚗 Detections:', data.detections.map((d: any) => ({
-            type: d.vehicle_type,
-            confidence: d.confidence?.toFixed(2),
-            bbox: d.bbox ? `[${d.bbox[0]}, ${d.bbox[1]}, ${d.bbox[2]}, ${d.bbox[3]}]` : 'N/A',
-            center_y: d.bbox ? (d.bbox[1] + d.bbox[3] / 2).toFixed(0) : 'N/A',
-            hasInfraction: d.has_infraction,
-            infractionType: d.infraction_type,
-            speed: d.speed,
-            plate: d.license_plate
-          })));
+          console.log(`🚗 ${data.detections.length} Detecciones en frame:`, data.detections.map((d: any, idx: number) => {
+            const plateInfo = d.license_plate ? `✅ ${d.license_plate}` : '❌ NO DETECTADA';
+            const infractionInfo = d.has_infraction ? `⚠️ ${d.infraction_type}` : '✓ Sin infracción';
+            return `\n  [${idx}] ${infractionInfo} | Conf: ${(d.confidence * 100).toFixed(1)}% | Placa: ${plateInfo}` +
+                   (d.speed ? ` | Velocidad: ${d.speed.toFixed(1)} km/h` : '');
+          }).join(''));
+          
+          // Destacar detecciones de placas
+          const platesDetected = data.detections.filter((d: any) => d.license_plate);
+          if (platesDetected.length > 0) {
+            console.log(`🎯 PLACAS DETECTADAS (${platesDetected.length}/${data.detections.length}):`, 
+              platesDetected.map((d: any) => `"${d.license_plate}"`).join(', '));
+          } else {
+            console.warn(`⚠️ SIN PLACAS DETECTADAS en ${data.detections.length} vehículos (OCR ${enableOCR ? 'HABILITADO' : 'DESHABILITADO'})`);
+          }
           
           // Log vehicles with infractions
           const vehiclesWithInfractions = data.detections.filter((d: any) => d.has_infraction);
           if (vehiclesWithInfractions.length > 0) {
-            console.log('🚨 VEHICLES WITH INFRACTIONS:', vehiclesWithInfractions.map((d: any) => ({
-              type: d.vehicle_type,
+            console.log('🚨 VEHÍCULOS CON INFRACCIONES:', vehiclesWithInfractions.map((d: any) => ({
               infractionType: d.infraction_type,
+              plate: d.license_plate || 'SIN PLACA',
               bbox: d.bbox,
               center_y: d.bbox ? (d.bbox[1] + d.bbox[3] / 2).toFixed(0) : 'N/A',
               infractionData: d.infraction_data
             })));
           }
+        } else if (data.type === 'frame') {
+          console.log('📭 Frame recibido sin detecciones');
         }
         
         // Log stop_line_y configuration for debugging
@@ -708,7 +821,9 @@ export function LocalWebcamDetection({
           return;
         }
 
-        // CRITICAL: Display the processed frame from backend (has boxes drawn)
+        // 🚫 NO USAR FRAMES PROCESADOS DEL BACKEND - El frontend dibuja mejor canvas
+        // Esto mejora la asociación correcta entre placas y vehículos con infracciones
+        /*
         if (data.frame && canvasRef.current) {
           const canvas = canvasRef.current;
           const ctx = canvas.getContext('2d');
@@ -762,29 +877,7 @@ export function LocalWebcamDetection({
             // Draw original video frame
             ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
             
-            // Draw detection boxes manually if we have detections
-            if (data.detections && data.detections.length > 0) {
-              data.detections.forEach((detection: any) => {
-                if (detection.bbox) {
-                  const [x, y, width, height] = detection.bbox;
-                  
-                  // Draw bounding box
-                  ctx.strokeStyle = detection.has_infraction ? '#FF0000' : '#00FF00';
-                  ctx.lineWidth = 2;
-                  ctx.strokeRect(x, y, width, height);
-                  
-                  // Draw label
-                  const label = `${detection.vehicle_type || 'Vehicle'} (${(detection.confidence * 100).toFixed(1)}%)`;
-                  ctx.fillStyle = detection.has_infraction ? '#FF0000' : '#00FF00';
-                  ctx.font = 'bold 12px Arial';
-                  ctx.fillText(label, x, y - 5);
-                  
-                  if (detection.license_plate) {
-                    ctx.fillText(`Plate: ${detection.license_plate}`, x, y + height + 15);
-                  }
-                }
-              });
-            }
+            // ❌ CANVAS VERDE ELIMINADO - Solo dibujar infracciones, no tipo de vehículo
             
             // Draw stop line if traffic light detection is enabled
             if (enableTrafficLight && stopLineY) {
@@ -805,12 +898,19 @@ export function LocalWebcamDetection({
             console.log('🎨 Drew original video frame with detections on canvas:', canvas.width, 'x', canvas.height);
           }
         }
+        */
+        // FIN DE USO DE FRAMES DEL BACKEND
 
-        // Store detections for stats
-        if (data.detections) {
+        // 🎯 Store detections for drawing on canvas
+        if (data.detections && data.detections.length > 0) {
+          // Update ref with current detections for renderLoop to draw
+          lastDetectionsRef.current = data.detections;
           setDetectionCount(data.detections.length);
           processingFrameRef.current = false;
         } else {
+          // Clear detections if none received
+          lastDetectionsRef.current = [];
+          setDetectionCount(0);
           processingFrameRef.current = false;
         }
       } catch (err) {

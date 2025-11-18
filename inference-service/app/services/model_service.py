@@ -345,9 +345,9 @@ class ModelService:
                 
                 logger.debug(f"   📝 Cleaned text: '{text}'")
                 
-                # ✅ Filtrar por confianza mínima (REDUCIDO a 0.2 con parámetros avanzados de EasyOCR)
-                if conf < 0.2:
-                    logger.debug(f"   ⚠️ Low confidence: {conf:.2f} < 0.2")
+                # ✅ Filtrar por confianza mínima (ULTRA AGRESIVO: 0.10 para capturar más placas)
+                if conf < 0.10:
+                    logger.debug(f"   ⚠️ Low confidence: {conf:.2f} < 0.10")
                     continue
                 
                 # Validate plate format (basic)
@@ -376,18 +376,66 @@ class ModelService:
         """
         Validate license plate format (Peru format)
         Formatos válidos:
-        - ABC123 (6 chars) → ABC-123
-        - ABC1234 (7 chars) → ABC-1234  
-        - B7J482 (6 chars) → B7J-482
-        - AB1234 (6 chars) → AB-1234
+        - ABC123 o ABC-123 (Standard: 3 letras + 3 dígitos)
+        - B7J482 o B7J-482 (Taxi: L+N+L + 3 dígitos)
+        - AB1234 o AB-1234 (Antiguo: 2 letras + 4 dígitos)
+        - A1B123 o A1B-123 (Especial: L+N+L + 3 dígitos)
         
-        ✅ VALIDACIÓN FLEXIBLE: Acepta 6-7 caracteres alfanuméricos
+        ✅ VALIDACIÓN MUY FLEXIBLE: Acepta 6-7 caracteres con patrones variados
         """
-        # Longitud debe ser 6 o 7 caracteres (sin guion)
-        if len(text) < 6 or len(text) > 7:
+        import re
+        
+        # Remove existing hyphen if present
+        clean_text = text.replace('-', '')
+        
+        # Longitud debe ser 6 o 7 caracteres
+        if len(clean_text) < 6 or len(clean_text) > 7:
             return False
         
-        # Debe contener al menos una letra Y un número
+        # Debe contener al menos UNA letra Y UN número (muy permisivo)
+        has_letter = any(c.isalpha() for c in clean_text)
+        has_digit = any(c.isdigit() for c in clean_text)
+        
+        if not (has_letter and has_digit):
+            return False
+        
+        # Patrones válidos para placas peruanas (MUY PERMISIVO)
+        patterns = [
+            r'^[A-Z]{3}\d{3,4}$',      # ABC123, ABC1234
+            r'^[A-Z]\d[A-Z]\d{3,4}$',  # A1B123, A1B1234
+            r'^[A-Z]{2}\d{4,5}$',      # AB1234, AB12345
+            r'^[A-Z]\d{3}[A-Z]\d$',    # A123B4 (poco común)
+            r'^[A-Z]{2}[A-Z0-9]{4}$',  # Cualquier combinación 2L+4char
+        ]
+        
+        for pattern in patterns:
+            if re.match(pattern, clean_text):
+                return True
+        
+        # Si no coincide con patrones pero tiene formato razonable, aceptar
+        # (mínimo 2 letras Y mínimo 2 dígitos)
+        if not (has_letter and has_digit):
+            return False
+        
+        # Patrones válidos para placas peruanas (MUY PERMISIVO)
+        patterns = [
+            r'^[A-Z]{3}\d{3,4}$',      # ABC123, ABC1234
+            r'^[A-Z]\d[A-Z]\d{3,4}$',  # A1B123, A1B1234
+            r'^[A-Z]{2}\d{4,5}$',      # AB1234, AB12345
+            r'^[A-Z]\d{3}[A-Z]\d$',    # A123B4 (poco común)
+            r'^[A-Z]{2}[A-Z0-9]{4}$',  # Cualquier combinación 2L+4char
+        ]
+        
+        for pattern in patterns:
+            if re.match(pattern, clean_text):
+                return True
+        
+        # Si no coincide con patrones pero tiene formato razonable, aceptar
+        # (mínimo 2 letras Y mínimo 2 dígitos)
+        letter_count = sum(1 for c in clean_text if c.isalpha())
+        digit_count = sum(1 for c in clean_text if c.isdigit())
+        
+        return letter_count >= 2 and digit_count >= 2
         has_letter = any(c.isalpha() for c in text)
         has_number = any(c.isdigit() for c in text)
         

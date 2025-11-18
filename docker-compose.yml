@@ -165,7 +165,7 @@ services:
       context: ./inference-service
       dockerfile: Dockerfile
     container_name: traffic-inference
-    command: uvicorn app.main:app --host 0.0.0.0 --port 8001 --workers 4
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8001 --workers 1 --loop asyncio --http h11
     environment:
       DATABASE_URL: postgresql://${DB_USER:-admin}:${DB_PASSWORD:-SecurePassword123!}@postgres:5432/${DB_NAME:-traffic_system}
       REDIS_URL: redis://redis:6379/0
@@ -181,14 +181,21 @@ services:
       # Ultralytics/YOLO configuration
       YOLO_CONFIG_DIR: /home/app/.ultralytics
       TORCH_HOME: /home/app/.torch
+      # Performance optimizations
+      YOLO_CONFIDENCE_THRESHOLD: ${YOLO_CONFIDENCE_THRESHOLD:-0.3}
+      YOLO_IOU_THRESHOLD: ${YOLO_IOU_THRESHOLD:-0.5}
+      # Cache configuration for better performance
+      MODEL_CACHE_SIZE: 100
+      DETECTION_CACHE_TTL: 1000
     ports:
       - "8001:8001"
     volumes:
       - ./inference-service:/app
       - ml_models:/app/models
       - camera_calibrations:/app/calibration
-      # Mount pre-downloaded YOLO model to avoid permission issues
-      - /home/ec2-user/models/yolov8n.pt:/app/models/yolov8n.pt:ro
+      # Note: YOLO models will be downloaded automatically on first run
+      # If you have pre-downloaded models, mount the directory instead:
+      # - /path/to/local/models:/app/models
     depends_on:
       postgres:
         condition: service_healthy

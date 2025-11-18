@@ -35,6 +35,8 @@ httpx==0.27.0  # For testing FastAPI endpoints
 # ML inference (YOLOv8 and OCR)
 ultralytics==8.0.230  # YOLOv8
 easyocr==1.7.1  # OCR for license plates
+transformers>=4.35.0  # TrOCR for enhanced OCR
+sentencepiece>=0.1.99  # Tokenizer for Transformers
 onnxruntime==1.17.3
 torch==2.2.2
 torchvision==0.17.2

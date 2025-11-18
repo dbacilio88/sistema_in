@@ -5,6 +5,11 @@ const nextConfig: NextConfig = {
   output: 'standalone',
   reactStrictMode: false, // Disable to prevent double mounting in dev mode
   
+  // Turbopack config (Next.js 16 uses Turbopack by default)
+  turbopack: {
+    // Empty config to silence webpack compatibility warning
+  },
+  
   // Environment variables available to the client
   env: {
     NEXT_PUBLIC_API_URL: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000',

@@ -524,14 +524,6 @@ class RealtimeDetector:
                                 bbox_dict = None
                             
                             if bbox_dict and bbox_dict.get('width', 0) > 0 and bbox_dict.get('height', 0) > 0:
-                                if use_background_ocr:
-                                    # 🚀 BACKGROUND: Lanzar OCR en thread pool (no bloquea)
-                                    logger.debug(f"🚀 Launching background OCR task...")
-                                    # Marcar que OCR está en progreso
-                                    vehicle['ocr_pending'] = True
-                                    vehicle['license_plate'] = "Processing..."
-                                    vehicle['license_confidence'] = 0.0
-                                else:
                                     # MODO NORMAL: Esperar resultado (bloquea)
                                     plate_result = await model_service.detect_license_plate(frame, bbox_dict)
                                     if plate_result:
@@ -700,9 +692,50 @@ class RealtimeDetector:
             processing_time_seconds = processing_end_time - processing_start_time
             logger.info(f"⏱️  Frame processing time: {processing_time_seconds:.3f}s")
             
-            # Add processing time to each infraction
+            # ⏱️ ADD ML TIME TO ALL DETECTIONS (not just infractions)
+            ml_processing_time_ms = round(processing_time_seconds * 1000, 2)
+            logger.info(f"⏱️ ML Time: {ml_processing_time_ms}ms | Detections: {len(detections)} | Infractions: {len(infractions_detected)}")
+            
+            # Add ML Time to ALL detections for frontend display
+            for det in detections:
+                det['ml_prediction_time_ms'] = ml_processing_time_ms
+            
+            # Add processing time + ML Time + Risk to each infraction
             for infraction in infractions_detected:
                 infraction['processing_time_seconds'] = round(processing_time_seconds, 3)
+                infraction['ml_prediction_time_ms'] = ml_processing_time_ms
+                
+                # Calculate recidivism risk based on severity
+                inf_type = infraction.get('infraction_type')
+                risk_score = 0.0
+                
+                if inf_type == 'speed':
+                    # Speed infractions: base 0.3 + excess over limit (max 0.7)
+                    detected_speed = infraction.get('detected_speed', 0)
+                    speed_limit = infraction.get('speed_limit', 50)
+                    excess = max(0, detected_speed - speed_limit)
+                    risk_score = min(0.3 + (excess / 100.0), 1.0)
+                elif inf_type == 'red_light':
+                    # Red light: very high risk (0.85)
+                    risk_score = 0.85
+                elif inf_type in ['wrong_lane', 'lane_invasion']:
+                    # Lane violations: medium-high risk (0.70)
+                    risk_score = 0.70
+                else:
+                    # Default: low risk (0.40)
+                    risk_score = 0.40
+                
+                infraction['recidivism_risk'] = round(risk_score, 3)
+                
+                # Update the corresponding detection object with ml_time and risk
+                infraction_id = infraction.get('id')
+                for det in detections:
+                    if det.get('id') == infraction_id:
+                        det['ml_prediction_time_ms'] = ml_processing_time_ms
+                        det['recidivism_risk'] = round(risk_score, 3)
+                        break
+                
+                logger.info(f"✅ [{inf_type}] ML Time: {ml_processing_time_ms}ms | Risk: {risk_score:.3f}")
             
             # Clean old tracks periodically
             if self.frame_count % 100 == 0:
@@ -822,6 +855,16 @@ class RealtimeDetector:
                 if detection.get('processing_time_seconds'):
                     formatted_detection['processing_time_seconds'] = detection['processing_time_seconds']
                     logger.info(f"   ⏱️  Processing time: {detection['processing_time_seconds']:.3f}s")
+                
+                # 🚀 Add ML prediction time (en milisegundos)
+                if detection.get('ml_prediction_time_ms'):
+                    formatted_detection['ml_prediction_time_ms'] = detection['ml_prediction_time_ms']
+                    logger.info(f"   ⏱️  ML Time: {detection['ml_prediction_time_ms']}ms")
+                
+                # 🎯 Add recidivism risk score
+                if detection.get('recidivism_risk'):
+                    formatted_detection['recidivism_risk'] = detection['recidivism_risk']
+                    logger.info(f"   🎯 Risk Score: {detection['recidivism_risk']:.3f}")
                 
                 # Metadata adicional
                 formatted_detection['evidence_metadata'] = {

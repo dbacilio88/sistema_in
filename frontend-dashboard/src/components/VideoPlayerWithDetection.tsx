@@ -198,6 +198,19 @@ export function VideoPlayerWithDetection({
             const data = JSON.parse(event.data);
             
             if (data.type === 'frame') {
+              // Log detections with plate and infraction information (not vehicle type)
+              if (data.detections && data.detections.length > 0) {
+                console.log('🚗 Detecciones en frame', data.frame_number, ':', data.detections.length);
+                data.detections.forEach((det: Detection, idx: number) => {
+                  const plateInfo = det.license_plate ? `✅ ${det.license_plate}` : '❌ NO DETECTADA';
+                  const infractionInfo = det.infraction_type ? `⚠️ ${det.infraction_type}` : '✓ Sin infracción';
+                  console.log(`  [${idx}] ${infractionInfo}, ` +
+                    `Confianza: ${(det.confidence * 100).toFixed(1)}%, ` +
+                    `Placa: ${plateInfo}` +
+                    (det.speed ? `, Velocidad: ${det.speed.toFixed(1)} km/h` : ''));
+                });
+              }
+              
               handleFrame({
                 frame: data.frame,
                 detections: data.detections || [],
@@ -205,13 +218,13 @@ export function VideoPlayerWithDetection({
                 frame_number: data.frame_number
               });
             } else if (data.type === 'error') {
-              console.error('Stream error:', data.error);
+              console.error('❌ Stream error:', data.error);
               setError(true);
               setLoading(false);
               onError?.();
             }
           } catch (err) {
-            console.error('Error parsing WebSocket message:', err);
+            console.error('❌ Error parsing WebSocket message:', err);
           }
         };
 
